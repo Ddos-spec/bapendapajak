@@ -232,6 +232,64 @@ function buildFollowUpHighlights(place: PlaceAnalysis) {
   return actions.slice(0, 4);
 }
 
+function buildOperatorHeadline(place: PlaceAnalysis) {
+  if (place.priority === "high") {
+    return `Objek ini sudah layak masuk shortlist pemeriksaan awal dengan potensi pajak ${formatCompactCurrency(place.estimatedMonthlyTax)} per bulan.`;
+  }
+
+  if (place.priority === "medium") {
+    return `Objek ini cukup kuat untuk masuk pengamatan aktif sambil disiapkan pembanding omzet dan operasionalnya.`;
+  }
+
+  return `Objek ini masih level pantau, tetapi tetap menyimpan sinyal yang bisa dinaikkan kalau hasil lapangan menguatkan.`;
+}
+
+function buildOperatorSummary(place: PlaceAnalysis) {
+  const contactState =
+    place.website && place.phoneNumber
+      ? "kanal kontak publik relatif lengkap"
+      : place.website || place.phoneNumber
+        ? "kanal kontak publik baru terbaca sebagian"
+        : "kanal kontak publik masih minim";
+
+  return `${categoryLabel(place.category)} di ${regionLabel(place.regionId)} ini tertarik dari query "${place.sourceQuery}" dengan ${contactState}. Cocok dipakai sebagai bahan triase awal sebelum tim mutusin perlu cek lapangan cepat atau cukup dipantau dulu.`;
+}
+
+function buildRevenueBreakdown(place: PlaceAnalysis) {
+  const weekdayRevenue = place.estimatedVisitorsWeekday * place.averageTicket;
+  const weekendRevenue = place.estimatedVisitorsWeekend * place.averageTicket;
+
+  return [
+    `Weekday: ${place.estimatedVisitorsWeekday} x ${formatCurrency(place.averageTicket)} = ${formatCurrency(weekdayRevenue)} per hari.`,
+    `Weekend: ${place.estimatedVisitorsWeekend} x ${formatCurrency(place.averageTicket)} = ${formatCurrency(weekendRevenue)} per hari.`,
+    `Omzet bulanan: (22 x ${formatCurrency(weekdayRevenue)}) + (8 x ${formatCurrency(weekendRevenue)}) = ${formatCompactCurrency(place.estimatedMonthlyRevenue)}.`,
+    `Potensi pajak: ${formatCompactCurrency(place.estimatedMonthlyRevenue)} x ${Math.round(place.assumptions.taxRate * 100)}% = ${formatCompactCurrency(place.estimatedMonthlyTax)}.`,
+  ];
+}
+
+function buildVerificationChecklist(place: PlaceAnalysis) {
+  const checklist = [
+    "Verifikasi identitas wajib pajak seperti NPWPD, PADL, dan status alat perekam transaksi bila tersedia.",
+    "Bandingkan kepadatan review, rating, dan jam operasional dengan kewajaran omzet yang nanti dilaporkan objek.",
+  ];
+
+  if (place.category === "restaurant") {
+    checklist.push("Cek pola dine-in, takeaway, delivery, dan harga menu dominan saat jam ramai.");
+  } else if (place.category === "hotel") {
+    checklist.push("Cek jumlah kamar aktif, pola okupansi, dan rentang tarif harian sebagai pembanding omzet.");
+  } else {
+    checklist.push("Cek layanan hiburan yang aktif, pola paket/tarif, dan jam operasional puncak di lapangan.");
+  }
+
+  checklist.push(
+    place.openNow === false
+      ? "Karena data publik menandai sedang tutup, cocok dipastikan lagi apakah jam operasional digitalnya masih akurat."
+      : "Dokumentasikan kondisi outlet saat kunjungan supaya data digital dan kondisi lapangan bisa dibandingkan."
+  );
+
+  return checklist;
+}
+
 function comparePlaces(left: PlaceAnalysis, right: PlaceAnalysis) {
   return (
     right.signalScore - left.signalScore ||
@@ -545,6 +603,18 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
                 </span>
               </div>
 
+              <div className="operator-brief-card">
+                <span>Brief operator</span>
+                <strong>{buildOperatorHeadline(selectedPlace)}</strong>
+                <p>{buildOperatorSummary(selectedPlace)}</p>
+                <div className="brief-chip-row">
+                  <span className="brief-chip">{formatCompactCurrency(selectedPlace.estimatedMonthlyTax)} potensi pajak</span>
+                  <span className="brief-chip">{numberFormatter.format(selectedPlace.userRatingCount)} ulasan publik</span>
+                  <span className="brief-chip">Signal score {selectedPlace.signalScore}</span>
+                  <span className="brief-chip">Query: {selectedPlace.sourceQuery}</span>
+                </div>
+              </div>
+
               <div className="stat-triplet">
                 <div className="stat-box">
                   <span>Signal score</span>
@@ -675,6 +745,25 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
                   <span>Tarif pajak asumsi</span>
                   <strong>{Math.round(selectedPlace.assumptions.taxRate * 100)}%</strong>
                   <small>Dipakai untuk menghitung potensi pajak dari estimasi omzet bulanan.</small>
+                </div>
+              </div>
+
+              <div className="verification-grid">
+                <div className="insight-card formula-card">
+                  <span>Simulasi omzet dan pajak</span>
+                  <ul>
+                    {buildRevenueBreakdown(selectedPlace).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="insight-card">
+                  <span>Checklist verifikasi lapangan</span>
+                  <ul>
+                    {buildVerificationChecklist(selectedPlace).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
               </div>
 

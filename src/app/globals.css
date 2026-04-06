@@ -589,6 +589,57 @@ button {
     linear-gradient(180deg, rgba(36, 107, 255, 0.06), rgba(255, 255, 255, 0.96));
 }
 
+.operator-brief-card {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(36, 107, 255, 0.16);
+  background:
+    linear-gradient(135deg, rgba(36, 107, 255, 0.12), rgba(255, 255, 255, 0.96)),
+    var(--surface-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.operator-brief-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.operator-brief-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.08rem;
+  line-height: 1.45;
+}
+
+.operator-brief-card p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.brief-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.brief-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(36, 107, 255, 0.14);
+  color: #214697;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .insight-card ul {
   margin: 12px 0 0;
   padding-left: 18px;
@@ -598,6 +649,18 @@ button {
 
 .insight-card li + li {
   margin-top: 8px;
+}
+
+.verification-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.formula-card {
+  background:
+    linear-gradient(180deg, rgba(8, 145, 103, 0.08), rgba(255, 255, 255, 0.98));
 }
 
 .mini-bar,
@@ -1061,7 +1124,8 @@ button {
   .stat-triplet,
   .detail-grid,
   .mini-chart-grid,
-  .insight-grid {
+  .insight-grid,
+  .verification-grid {
     grid-template-columns: 1fr;
   }
 
