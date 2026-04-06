@@ -50,12 +50,12 @@ const REGION_LABELS = new Map(
   SEARCH_REGIONS.map((region) => [region.id, region.name] as const),
 );
 
+const numberFormatter = new Intl.NumberFormat("id-ID", {
+  maximumFractionDigits: 0,
+});
+
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return `Rp ${numberFormatter.format(value)}`;
 }
 
 function formatCompactCurrency(value: number) {
@@ -180,9 +180,10 @@ function comparePlaces(left: PlaceAnalysis, right: PlaceAnalysis) {
 
 interface DashboardClientProps {
   snapshot: DailySnapshot;
+  generatedAtLabel: string;
 }
 
-export function DashboardClient({ snapshot }: DashboardClientProps) {
+export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientProps) {
   const [searchText, setSearchText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -283,7 +284,7 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
         <div className="hero-meta-grid">
           <div className="hero-meta-card">
             <span>Snapshot terakhir</span>
-            <strong>{new Date(snapshot.generatedAt).toLocaleString("id-ID")}</strong>
+            <strong>{generatedAtLabel}</strong>
           </div>
           <div className="hero-meta-card">
             <span>Potensi pajak aktif</span>
