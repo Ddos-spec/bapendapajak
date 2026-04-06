@@ -41,12 +41,14 @@ interface PlaceMapProps {
   places: PlaceAnalysis[];
   selectedPlaceId: string | null;
   onSelectPlace: (placeId: string) => void;
+  isRefreshing?: boolean;
 }
 
 export function PlaceMap({
   places,
   selectedPlaceId,
   onSelectPlace,
+  isRefreshing = false,
 }: PlaceMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -232,8 +234,12 @@ export function PlaceMap({
       <div className="map-canvas" ref={containerRef} />
       {!validPlaces.length ? (
         <div className="map-empty">
-          <strong>Pin lokasi belum tersedia</strong>
-          <span>Tempat yang dipilih belum punya koordinat publik yang cukup.</span>
+          <strong>{isRefreshing ? "Menyegarkan pin lokasi..." : "Pin lokasi belum tersedia"}</strong>
+          <span>
+            {isRefreshing
+              ? "Dashboard lagi sinkron ke snapshot live terbaru supaya titik lokasi dan detail objek ikut lengkap."
+              : "Tempat yang dipilih belum punya koordinat publik yang cukup."}
+          </span>
         </div>
       ) : null}
     </div>

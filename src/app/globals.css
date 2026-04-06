@@ -152,6 +152,18 @@ button {
   line-height: 1.4;
 }
 
+.hero-meta-note {
+  display: block;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.warning-note {
+  color: rgba(255, 232, 163, 0.94);
+}
+
 .metric-grid,
 .workspace-grid,
 .results-grid {
@@ -489,7 +501,8 @@ button {
 
 .stat-triplet,
 .detail-grid,
-.mini-chart-grid {
+.mini-chart-grid,
+.insight-grid {
   display: grid;
   gap: 12px;
   margin-top: 18px;
@@ -507,11 +520,16 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.insight-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .stat-box,
 .analysis-card,
 .detail-card,
 .mini-chart-card,
-.opening-hours-card {
+.opening-hours-card,
+.insight-card {
   padding: 16px;
   border-radius: 22px;
   border: 1px solid var(--line);
@@ -523,7 +541,8 @@ button {
 .analysis-card span,
 .detail-card span,
 .mini-chart-card span,
-.opening-hours-card span {
+.opening-hours-card span,
+.insight-card span {
   display: block;
   color: var(--muted);
   font-size: 12px;
@@ -541,10 +560,12 @@ button {
 }
 
 .stat-box small,
-.mini-chart-card small {
+.mini-chart-card small,
+.detail-card small {
   display: block;
   margin-top: 8px;
   color: var(--muted);
+  line-height: 1.5;
 }
 
 .detail-links {
@@ -566,6 +587,17 @@ button {
   margin-top: 18px;
   background:
     linear-gradient(180deg, rgba(36, 107, 255, 0.06), rgba(255, 255, 255, 0.96));
+}
+
+.insight-card ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.insight-card li + li {
+  margin-top: 8px;
 }
 
 .mini-bar,
@@ -978,7 +1010,7 @@ button {
 .location-panel .map-canvas {
   height: 320px;
   cursor: grab;
-  touch-action: none;
+  touch-action: auto;
 }
 
 .location-panel .map-canvas:active {
@@ -1028,7 +1060,8 @@ button {
   .results-grid,
   .stat-triplet,
   .detail-grid,
-  .mini-chart-grid {
+  .mini-chart-grid,
+  .insight-grid {
     grid-template-columns: 1fr;
   }
 

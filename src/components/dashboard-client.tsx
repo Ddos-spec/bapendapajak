@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { PlaceMap } from "@/components/place-map";
 import { SEARCH_REGIONS } from "@/lib/config";
@@ -80,6 +80,15 @@ function priorityLabel(priority: PriorityLevel) {
 
 function regionLabel(regionId: string) {
   return REGION_LABELS.get(regionId) ?? regionId;
+}
+
+function formatGeneratedAt(value: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    hour12: false,
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(value));
 }
 
 function businessStatusLabel(status: string | null) {
@@ -170,6 +179,59 @@ function buildObjectNarrative(place: PlaceAnalysis) {
   return `${place.name} masuk prioritas ${priorityLabel(place.priority).toLowerCase()} karena ${drivers.join(", ")}. ${closingLine}`;
 }
 
+function buildSignalHighlights(place: PlaceAnalysis) {
+  const googleTypes = place.types.length
+    ? place.types
+        .slice(0, 4)
+        .map((type) => type.replaceAll("_", " "))
+        .join(", ")
+    : "tipe Google belum kebaca";
+
+  return [
+    `${place.rating?.toFixed(1) ?? "-"} rating dari ${numberFormatter.format(place.userRatingCount)} ulasan publik.`,
+    `${openNowLabel(place.openNow)} dengan status usaha ${businessStatusLabel(place.businessStatus).toLowerCase()}.`,
+    `Query pemicu: "${place.sourceQuery}" dan klasifikasi Google: ${googleTypes}.`,
+  ];
+}
+
+function buildEstimationHighlights(place: PlaceAnalysis) {
+  return [
+    `Rata-rata transaksi diasumsikan ${formatCurrency(place.averageTicket)} per kunjungan.`,
+    `Estimasi pengunjung ${place.estimatedVisitorsWeekday} weekday dan ${place.estimatedVisitorsWeekend} weekend.`,
+    `Tarif pajak asumsi ${Math.round(place.assumptions.taxRate * 100)}% dengan review velocity ${place.assumptions.reviewVelocityFactor.toFixed(2)}x.`,
+  ];
+}
+
+function buildFollowUpHighlights(place: PlaceAnalysis) {
+  const actions: string[] = [];
+
+  if (place.priority === "high") {
+    actions.push("Naikkan ke shortlist pemeriksaan awal karena skor sinyal sudah kuat.");
+  } else if (place.priority === "medium") {
+    actions.push("Masuk antrean pengamatan aktif sebelum dipilih untuk cek lapangan.");
+  } else {
+    actions.push("Pantau berkala sambil tunggu sinyal tambahan atau pembanding wilayah.");
+  }
+
+  if (!place.website) {
+    actions.push("Lengkapi identitas digital usaha karena website publik belum terdeteksi.");
+  }
+
+  if (!place.phoneNumber) {
+    actions.push("Cari nomor kontak saat verifikasi lapangan agar data objek lebih lengkap.");
+  }
+
+  if (place.category === "restaurant") {
+    actions.push("Bandingkan kepadatan review dengan kewajaran omzet makan-minum dan jam ramai.");
+  } else if (place.category === "hotel") {
+    actions.push("Cek kapasitas kamar, okupansi, dan pola tarif harian sebagai pembanding omzet.");
+  } else {
+    actions.push("Validasi layanan hiburan yang benar-benar aktif dan skema tarif yang dikenakan.");
+  }
+
+  return actions.slice(0, 4);
+}
+
 function comparePlaces(left: PlaceAnalysis, right: PlaceAnalysis) {
   return (
     right.signalScore - left.signalScore ||
@@ -184,6 +246,10 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientProps) {
+  const [activeSnapshot, setActiveSnapshot] = useState(snapshot);
+  const [activeGeneratedAtLabel, setActiveGeneratedAtLabel] = useState(generatedAtLabel);
+  const [isRefreshingSnapshot, setIsRefreshingSnapshot] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -191,11 +257,55 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
     snapshot.places[0]?.placeId ?? null,
   );
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function refreshSnapshot() {
+      setIsRefreshingSnapshot(true);
+      setSnapshotError(null);
+
+      try {
+        const response = await fetch("/api/dashboard", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Dashboard API returned ${response.status}`);
+        }
+
+        const nextSnapshot = (await response.json()) as DailySnapshot;
+
+        startTransition(() => {
+          setActiveSnapshot(nextSnapshot);
+          setActiveGeneratedAtLabel(formatGeneratedAt(nextSnapshot.generatedAt));
+        });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setSnapshotError("Snapshot live belum berhasil disegarkan. Tampilan masih pakai data terakhir yang tersedia.");
+        console.error(error);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsRefreshingSnapshot(false);
+        }
+      }
+    }
+
+    void refreshSnapshot();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
   const deferredSearch = useDeferredValue(searchText.trim().toLowerCase());
 
   const searchablePlaces = useMemo(
-    () => snapshot.places.filter((place) => matchesSearch(place, deferredSearch)),
-    [deferredSearch, snapshot.places],
+    () => activeSnapshot.places.filter((place) => matchesSearch(place, deferredSearch)),
+    [activeSnapshot.places, deferredSearch],
   );
 
   const categoryCounts = useMemo(
@@ -276,19 +386,24 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
           </p>
           <div className="hero-badges">
             <span>Wilayah: Seluruh Tangerang Selatan</span>
-            <span>Mode: {snapshot.mode === "live" ? "Live snapshot" : "Seed snapshot"}</span>
+            <span>Mode: {activeSnapshot.mode === "live" ? "Live snapshot" : "Seed snapshot"}</span>
             <span>Data tampil: {filteredSummary.totalPlaces} objek</span>
+            {isRefreshingSnapshot ? <span>Menyegarkan snapshot live...</span> : null}
           </div>
         </div>
 
         <div className="hero-meta-grid">
           <div className="hero-meta-card">
             <span>Snapshot terakhir</span>
-            <strong>{generatedAtLabel}</strong>
+            <strong>{activeGeneratedAtLabel}</strong>
+            {snapshotError ? <small className="hero-meta-note warning-note">{snapshotError}</small> : null}
           </div>
           <div className="hero-meta-card">
             <span>Potensi pajak aktif</span>
             <strong>{formatCompactCurrency(filteredSummary.estimatedMonthlyTax)}</strong>
+            <small className="hero-meta-note">
+              {filteredSummary.highPriority} prioritas tinggi dari {filteredSummary.totalPlaces} objek aktif
+            </small>
           </div>
           <div className="hero-meta-card action-card">
             <span>Data mentah</span>
@@ -453,6 +568,33 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
                 <p>{buildObjectNarrative(selectedPlace)}</p>
               </div>
 
+              <div className="insight-grid">
+                <div className="insight-card">
+                  <span>Sinyal publik</span>
+                  <ul>
+                    {buildSignalHighlights(selectedPlace).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="insight-card">
+                  <span>Dasar estimasi</span>
+                  <ul>
+                    {buildEstimationHighlights(selectedPlace).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="insight-card">
+                  <span>Tindak lanjut</span>
+                  <ul>
+                    {buildFollowUpHighlights(selectedPlace).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
               <div className="location-panel">
                 <div className="location-head">
                   <div>
@@ -465,9 +607,11 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
                 </div>
 
                 <PlaceMap
+                  key={activeSnapshot.generatedAt}
                   places={mapPlaces}
                   selectedPlaceId={selectedPlace.placeId}
                   onSelectPlace={setSelectedPlaceId}
+                  isRefreshing={isRefreshingSnapshot}
                 />
               </div>
 
@@ -520,6 +664,17 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
                     {selectedPlace.latitude?.toFixed(5) ?? "-"},{" "}
                     {selectedPlace.longitude?.toFixed(5) ?? "-"}
                   </strong>
+                  <small>{selectedPlace.latitude != null && selectedPlace.longitude != null ? "Koordinat dari Google Places." : "Koordinat publik belum terbaca di snapshot aktif."}</small>
+                </div>
+                <div className="detail-card">
+                  <span>Query pemicu</span>
+                  <strong>{selectedPlace.sourceQuery}</strong>
+                  <small>Kata pencarian yang pertama kali menarik objek ini ke dalam hasil.</small>
+                </div>
+                <div className="detail-card">
+                  <span>Tarif pajak asumsi</span>
+                  <strong>{Math.round(selectedPlace.assumptions.taxRate * 100)}%</strong>
+                  <small>Dipakai untuk menghitung potensi pajak dari estimasi omzet bulanan.</small>
                 </div>
               </div>
 
