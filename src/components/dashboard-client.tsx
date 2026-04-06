@@ -446,9 +446,9 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
           <p className="eyebrow">Tax Object Intelligence</p>
           <h1>Pantau objek potensial, baca analisisnya, lalu cek lokasinya dalam satu dashboard.</h1>
           <p className="hero-text">
-            Dashboard ini gue sederhanain jadi pola kerja yang lebih natural:
-            cari objek, saring wilayahnya, baca sinyal utamanya, lalu cek titik
-            lokasinya tanpa langkah yang muter-muter.
+            Dashboard ini dirancang supaya pemantauan objek lebih cepat:
+            filter wilayah, pilih objek yang relevan, pahami sinyal utamanya,
+            lalu lanjut ke verifikasi dari satu tampilan.
           </p>
           <div className="hero-badges">
             <span>Wilayah: Seluruh Tangerang Selatan</span>
