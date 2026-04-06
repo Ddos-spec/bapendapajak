@@ -96,6 +96,17 @@ button {
   letter-spacing: -0.04em;
 }
 
+.hero-signoff {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 0.34em;
+  font-weight: 600;
+  letter-spacing: 0;
+  opacity: 0.82;
+  vertical-align: super;
+  white-space: nowrap;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   font-family: var(--font-mono), monospace;
@@ -1247,6 +1258,14 @@ button {
     max-width: 100%;
     font-size: clamp(1.8rem, 11vw, 2.8rem);
     line-height: 0.96;
+  }
+
+  .hero-signoff {
+    display: block;
+    margin-top: 8px;
+    margin-left: 0;
+    font-size: 0.28em;
+    vertical-align: baseline;
   }
 
   .hero-text {

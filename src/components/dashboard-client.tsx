@@ -445,12 +445,13 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
         <div className="hero-copy-block">
           <p className="eyebrow">Tax Object Intelligence</p>
           <h1>
+            DINAS BAPENDA KOTA TANGERANG SELATAN{" "}
+            <span className="hero-signoff">by Memy</span>
+          </h1>
+          <p className="hero-text">
             Dashboard ini dirancang supaya pemantauan objek lebih cepat:
             filter wilayah, pilih objek yang relevan, pahami sinyal utamanya,
             lalu lanjut ke verifikasi dari satu tampilan.
-          </h1>
-          <p className="hero-text">
-            DINAS BAPENDA KOTA TANGERANG SELATAN by Memy
           </p>
           <div className="hero-badges">
             <span>Wilayah: Seluruh Tangerang Selatan</span>
