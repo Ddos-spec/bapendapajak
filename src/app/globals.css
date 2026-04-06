@@ -42,6 +42,11 @@ body {
     linear-gradient(180deg, #f8fbff 0%, #eef3f9 100%);
 }
 
+img,
+svg {
+  max-width: 100%;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -729,6 +734,7 @@ button {
   margin-top: 18px;
   padding-right: 4px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .result-counter {
@@ -759,6 +765,8 @@ button {
     transform 180ms ease,
     box-shadow 180ms ease,
     border-color 180ms ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 120px;
 }
 
 .place-row:hover,
@@ -782,6 +790,7 @@ button {
 .place-main strong {
   display: block;
   font-size: 1rem;
+  overflow-wrap: anywhere;
 }
 
 .place-main span,
@@ -795,6 +804,7 @@ button {
 
 .place-main small {
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .place-metrics {
@@ -1053,22 +1063,87 @@ button {
 }
 
 @media (max-width: 1280px) {
+  .dashboard-shell {
+    width: min(100%, calc(100vw - 24px));
+    margin: 16px auto 28px;
+  }
+
+  .hero-panel {
+    grid-template-columns: minmax(0, 1.18fr) minmax(280px, 0.82fr);
+    padding: 24px;
+  }
+
+  .hero-copy-block h1 {
+    max-width: 11.5ch;
+    font-size: clamp(2rem, 4.2vw, 3.4rem);
+  }
+
+  .hero-text {
+    max-width: 58ch;
+    line-height: 1.65;
+  }
+
   .metric-grid,
   .results-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .workspace-grid {
+  .master-detail-grid {
+    grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
+    gap: 16px;
+  }
+
+  .master-panel {
+    min-height: 860px;
+  }
+
+  .list-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .list-filter-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    width: 100%;
+  }
+
+  .list-select {
+    min-width: 0;
+  }
+
+  .place-row {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .place-metrics {
+    grid-column: 2;
+    justify-items: start;
+    font-size: 12px;
+  }
+
+  .priority-pill {
+    justify-self: end;
+    align-self: start;
+  }
+}
+
+@media (max-width: 1100px) {
+  .hero-panel {
     grid-template-columns: 1fr;
   }
 
-  .master-detail-grid,
-  .snapshot-charts {
-    grid-template-columns: 1fr;
+  .hero-meta-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .inspector-panel {
-    position: static;
+  .hero-meta-card {
+    min-height: 100%;
+  }
+
+  .map-canvas {
+    height: 460px;
   }
 }
 
@@ -1079,9 +1154,12 @@ button {
   }
 
   .hero-panel,
+  .hero-meta-grid,
   .metric-grid,
   .control-grid,
   .results-grid,
+  .master-detail-grid,
+  .snapshot-charts,
   .stat-triplet,
   .detail-grid,
   .mini-chart-grid,
@@ -1095,10 +1173,12 @@ button {
   .control-panel,
   .panel {
     border-radius: 24px;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(10px);
   }
 
-  .map-canvas {
-    height: 440px;
+  .inspector-panel {
+    position: static;
   }
 
   .location-head {
@@ -1114,10 +1194,6 @@ button {
   .list-toolbar {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .list-select {
-    min-width: 0;
   }
 
   .list-filter-group {
@@ -1142,6 +1218,8 @@ button {
   .control-panel,
   .panel {
     padding: 18px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+    backdrop-filter: none;
   }
 
   .control-head,
@@ -1164,6 +1242,17 @@ button {
 
   .hero-copy-block h1 {
     max-width: 100%;
+    font-size: clamp(1.8rem, 11vw, 2.8rem);
+    line-height: 0.96;
+  }
+
+  .hero-text {
+    font-size: 0.94rem;
+    line-height: 1.55;
+  }
+
+  .hero-badges {
+    gap: 8px;
   }
 
   .map-canvas {
@@ -1176,5 +1265,44 @@ button {
 
   .place-row {
     padding: 14px;
+    border-radius: 20px;
+    gap: 12px;
+  }
+
+  .place-rank {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+
+  .place-main strong {
+    font-size: 0.95rem;
+  }
+
+  .place-main small,
+  .place-metrics {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .interactive-card:hover,
+  .interactive-card.is-active,
+  .place-row:hover,
+  .place-row.is-selected,
+  .ghost-button:hover,
+  .action-link:hover,
+  .filter-chip:hover,
+  .chart-button:hover {
+    transform: none;
   }
 }
