@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
-import { SEARCH_REGIONS } from "@/lib/config";
 import { PlaceMap } from "@/components/place-map";
+import { SEARCH_REGIONS } from "@/lib/config";
 import type { DailySnapshot, PlaceAnalysis, PriorityLevel, TaxCategory } from "@/lib/types";
 
-type SortKey = "signal" | "revenue" | "reviews" | "rating" | "name";
+type CategoryFilter = "all" | TaxCategory;
+type PriorityFilter = "all" | PriorityLevel;
 
 const CATEGORY_META: Array<{ id: TaxCategory; label: string; description: string }> = [
   {
@@ -27,35 +28,27 @@ const CATEGORY_META: Array<{ id: TaxCategory; label: string; description: string
   },
 ];
 
-const PRIORITY_META: Array<{
-  id: PriorityLevel;
-  label: string;
-  description: string;
-}> = [
+const PRIORITY_META: Array<{ id: PriorityLevel; label: string; description: string }> = [
   {
     id: "high",
     label: "Tinggi",
-    description: "Layak masuk pemeriksaan awal atau validasi cepat.",
+    description: "Layak diperiksa lebih dulu.",
   },
   {
     id: "medium",
     label: "Sedang",
-    description: "Perlu dipantau dan dibandingkan dengan data lapangan.",
+    description: "Perlu dipantau aktif.",
   },
   {
     id: "monitor",
     label: "Pantau",
-    description: "Masih layak dipantau rutin walau belum paling mendesak.",
+    description: "Masih dipantau rutin.",
   },
 ];
 
-const REGION_OPTIONS = [
-  { id: "all", label: "Semua kecamatan" },
-  ...SEARCH_REGIONS.map((region) => ({
-    id: region.id,
-    label: region.name,
-  })),
-];
+const REGION_LABELS = new Map(
+  SEARCH_REGIONS.map((region) => [region.id, region.name] as const),
+);
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("id-ID", {
@@ -77,16 +70,16 @@ function formatCompactCurrency(value: number) {
   return formatCurrency(value);
 }
 
-function priorityLabel(priority: PriorityLevel) {
-  return PRIORITY_META.find((entry) => entry.id === priority)?.label ?? priority;
-}
-
 function categoryLabel(category: TaxCategory) {
   return CATEGORY_META.find((entry) => entry.id === category)?.label ?? category;
 }
 
+function priorityLabel(priority: PriorityLevel) {
+  return PRIORITY_META.find((entry) => entry.id === priority)?.label ?? priority;
+}
+
 function regionLabel(regionId: string) {
-  return REGION_OPTIONS.find((entry) => entry.id === regionId)?.label ?? regionId;
+  return REGION_LABELS.get(regionId) ?? regionId;
 }
 
 function businessStatusLabel(status: string | null) {
@@ -98,7 +91,7 @@ function businessStatusLabel(status: string | null) {
     case "CLOSED_PERMANENTLY":
       return "Tutup permanen";
     default:
-      return "Belum terdeteksi";
+      return "Status belum pasti";
   }
 }
 
@@ -133,22 +126,11 @@ function matchesSearch(place: PlaceAnalysis, query: string) {
   return haystack.includes(query);
 }
 
-function summarizePlaces(places: PlaceAnalysis[]) {
-  return {
-    totalPlaces: places.length,
-    highPriority: places.filter((place) => place.priority === "high").length,
-    mediumPriority: places.filter((place) => place.priority === "medium").length,
-    monitorPriority: places.filter((place) => place.priority === "monitor").length,
-    estimatedMonthlyRevenue: places.reduce(
-      (sum, place) => sum + place.estimatedMonthlyRevenue,
-      0,
-    ),
-    estimatedMonthlyTax: places.reduce(
-      (sum, place) => sum + place.estimatedMonthlyTax,
-      0,
-    ),
-    topPlaceName: places[0]?.name ?? null,
-  };
+function makeCountMap<T extends string>(items: T[]) {
+  return items.reduce<Record<T, number>>((acc, item) => {
+    acc[item] = (acc[item] ?? 0) + 1;
+    return acc;
+  }, {} as Record<T, number>);
 }
 
 function buildObjectNarrative(place: PlaceAnalysis) {
@@ -157,63 +139,43 @@ function buildObjectNarrative(place: PlaceAnalysis) {
   if ((place.rating ?? 0) >= 4.6) {
     drivers.push("rating publik sangat kuat");
   } else if ((place.rating ?? 0) >= 4) {
-    drivers.push("rating publik stabil");
+    drivers.push("rating publik cukup stabil");
   } else {
-    drivers.push("rating lolos ambang minimum");
+    drivers.push("rating baru lolos ambang minimum");
   }
 
   if (place.userRatingCount >= 180) {
-    drivers.push("jejak ulasan tinggi yang mengindikasikan traffic aktif");
+    drivers.push("jumlah ulasan tinggi yang mengindikasikan arus pengunjung aktif");
   } else if (place.userRatingCount >= 60) {
-    drivers.push("volume ulasan menengah");
+    drivers.push("ulasan publik berada di level menengah");
   } else {
-    drivers.push("ulasan masih terbatas sehingga validasi lapangan makin penting");
+    drivers.push("ulasan masih sedikit sehingga validasi lapangan makin penting");
   }
 
-  if (place.category === "entertainment") {
-    drivers.push("kategori hiburan dengan tarif pajak lebih agresif");
-  } else if (place.category === "hotel") {
-    drivers.push("kategori penginapan dengan asumsi okupansi harian");
+  if (place.category === "hotel") {
+    drivers.push("objek masuk kategori penginapan dengan asumsi okupansi harian");
+  } else if (place.category === "entertainment") {
+    drivers.push("objek masuk kategori hiburan dengan tarif pajak lebih tinggi");
   } else {
-    drivers.push("kategori restoran dengan pola transaksi berulang harian");
+    drivers.push("objek masuk kategori restoran dengan pola transaksi harian berulang");
   }
 
-  const riskLine =
+  const closingLine =
     place.priority === "high"
-      ? "Objek ini layak diprioritaskan untuk pengujian kewajaran omzet, pengecekan operasional, dan validasi lapangan."
+      ? "Objek ini layak naik ke daftar pemeriksaan awal."
       : place.priority === "medium"
-        ? "Objek ini cocok masuk antrean pengamatan aktif sebelum dinaikkan ke pemeriksaan lapangan."
-        : "Objek ini masih bisa dipantau rutin sambil menunggu sinyal publik atau data lapangan tambahan.";
+        ? "Objek ini cocok masuk antrean pengamatan aktif sebelum dicek lapangan."
+        : "Objek ini masih aman dipantau sambil menunggu sinyal tambahan.";
 
-  return `${place.name} masuk prioritas ${priorityLabel(place.priority).toLowerCase()} karena ${drivers.join(", ")}. ${riskLine}`;
+  return `${place.name} masuk prioritas ${priorityLabel(place.priority).toLowerCase()} karena ${drivers.join(", ")}. ${closingLine}`;
 }
 
-function sortPlaces(places: PlaceAnalysis[], sortBy: SortKey) {
-  const next = [...places];
-
-  next.sort((left, right) => {
-    switch (sortBy) {
-      case "name":
-        return left.name.localeCompare(right.name, "id");
-      case "rating":
-        return (right.rating ?? 0) - (left.rating ?? 0) || right.signalScore - left.signalScore;
-      case "reviews":
-        return right.userRatingCount - left.userRatingCount || right.signalScore - left.signalScore;
-      case "revenue":
-        return right.estimatedMonthlyRevenue - left.estimatedMonthlyRevenue || right.signalScore - left.signalScore;
-      default:
-        return right.signalScore - left.signalScore || right.estimatedMonthlyRevenue - left.estimatedMonthlyRevenue;
-    }
-  });
-
-  return next;
-}
-
-function makeCountMap<T extends string>(items: T[]) {
-  return items.reduce<Record<T, number>>((acc, item) => {
-    acc[item] = (acc[item] ?? 0) + 1;
-    return acc;
-  }, {} as Record<T, number>);
+function comparePlaces(left: PlaceAnalysis, right: PlaceAnalysis) {
+  return (
+    right.signalScore - left.signalScore ||
+    right.estimatedMonthlyRevenue - left.estimatedMonthlyRevenue ||
+    right.userRatingCount - left.userRatingCount
+  );
 }
 
 interface DashboardClientProps {
@@ -222,89 +184,36 @@ interface DashboardClientProps {
 
 export function DashboardClient({ snapshot }: DashboardClientProps) {
   const [searchText, setSearchText] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<TaxCategory[]>(
-    CATEGORY_META.map((entry) => entry.id),
-  );
-  const [selectedPriorities, setSelectedPriorities] = useState<PriorityLevel[]>(
-    PRIORITY_META.map((entry) => entry.id),
-  );
-  const [selectedRegion, setSelectedRegion] = useState("all");
-  const [sortBy, setSortBy] = useState<SortKey>("signal");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(
     snapshot.places[0]?.placeId ?? null,
   );
 
-  const deferredSearchText = useDeferredValue(searchText.trim().toLowerCase());
+  const deferredSearch = useDeferredValue(searchText.trim().toLowerCase());
 
-  const placesMatchingSearchAndRegion = useMemo(
-    () =>
-      snapshot.places.filter((place) => {
-        const matchesRegion =
-          selectedRegion === "all" || place.regionId === selectedRegion;
-
-        return matchesRegion && matchesSearch(place, deferredSearchText);
-      }),
-    [deferredSearchText, selectedRegion, snapshot.places],
+  const searchablePlaces = useMemo(
+    () => snapshot.places.filter((place) => matchesSearch(place, deferredSearch)),
+    [deferredSearch, snapshot.places],
   );
 
   const categoryCounts = useMemo(
-    () =>
-      makeCountMap(
-        placesMatchingSearchAndRegion
-          .filter((place) => selectedPriorities.includes(place.priority))
-          .map((place) => place.category),
-      ),
-    [placesMatchingSearchAndRegion, selectedPriorities],
+    () => makeCountMap(searchablePlaces.map((place) => place.category)),
+    [searchablePlaces],
   );
 
   const priorityCounts = useMemo(
-    () =>
-      makeCountMap(
-        placesMatchingSearchAndRegion
-          .filter((place) => selectedCategories.includes(place.category))
-          .map((place) => place.priority),
-      ),
-    [placesMatchingSearchAndRegion, selectedCategories],
-  );
-
-  const regionCounts = useMemo(
-    () => makeCountMap(placesMatchingSearchAndRegion.map((place) => place.regionId)),
-    [placesMatchingSearchAndRegion],
+    () => makeCountMap(searchablePlaces.map((place) => place.priority)),
+    [searchablePlaces],
   );
 
   const filteredPlaces = useMemo(
     () =>
-      sortPlaces(
-        placesMatchingSearchAndRegion.filter(
-          (place) =>
-            selectedCategories.includes(place.category) &&
-            selectedPriorities.includes(place.priority),
-        ),
-        sortBy,
-      ),
-    [
-      placesMatchingSearchAndRegion,
-      selectedCategories,
-      selectedPriorities,
-      sortBy,
-    ],
-  );
-
-  const filteredSummary = useMemo(
-    () => summarizePlaces(filteredPlaces),
-    [filteredPlaces],
-  );
-  const categoryChartTotal = Object.values(categoryCounts).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const priorityChartTotal = Object.values(priorityCounts).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const regionChartTotal = Object.values(regionCounts).reduce(
-    (sum, value) => sum + value,
-    0,
+      [...searchablePlaces]
+        .filter((place) => categoryFilter === "all" || place.category === categoryFilter)
+        .filter((place) => priorityFilter === "all" || place.priority === priorityFilter)
+        .sort(comparePlaces),
+    [categoryFilter, priorityFilter, searchablePlaces],
   );
 
   useEffect(() => {
@@ -321,68 +230,53 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
   const selectedPlace = useMemo(
     () =>
       filteredPlaces.find((place) => place.placeId === selectedPlaceId) ??
-      snapshot.places.find((place) => place.placeId === selectedPlaceId) ??
       filteredPlaces[0] ??
       null,
-    [filteredPlaces, selectedPlaceId, snapshot.places],
+    [filteredPlaces, selectedPlaceId],
   );
 
-  const allCategoriesSelected = selectedCategories.length === CATEGORY_META.length;
-  const allPrioritiesSelected = selectedPriorities.length === PRIORITY_META.length;
+  const filteredSummary = useMemo(
+    () => ({
+      totalPlaces: filteredPlaces.length,
+      highPriority: filteredPlaces.filter((place) => place.priority === "high").length,
+      mediumPriority: filteredPlaces.filter((place) => place.priority === "medium").length,
+      monitorPriority: filteredPlaces.filter((place) => place.priority === "monitor").length,
+      estimatedMonthlyRevenue: filteredPlaces.reduce(
+        (sum, place) => sum + place.estimatedMonthlyRevenue,
+        0,
+      ),
+      estimatedMonthlyTax: filteredPlaces.reduce(
+        (sum, place) => sum + place.estimatedMonthlyTax,
+        0,
+      ),
+    }),
+    [filteredPlaces],
+  );
 
-  function toggleCategory(category: TaxCategory) {
-    startTransition(() => {
-      setSelectedCategories((current) => {
-        if (current.includes(category)) {
-          return current.length === 1
-            ? current
-            : current.filter((entry) => entry !== category);
-        }
-
-        return [...current, category];
-      });
-    });
-  }
-
-  function togglePriority(priority: PriorityLevel) {
-    startTransition(() => {
-      setSelectedPriorities((current) => {
-        if (current.includes(priority)) {
-          return current.length === 1
-            ? current
-            : current.filter((entry) => entry !== priority);
-        }
-
-        return [...current, priority];
-      });
-    });
-  }
-
-  function resetFilters() {
-    startTransition(() => {
-      setSelectedCategories(CATEGORY_META.map((entry) => entry.id));
-      setSelectedPriorities(PRIORITY_META.map((entry) => entry.id));
-      setSelectedRegion("all");
-      setSortBy("signal");
-      setSearchText("");
-    });
-  }
+  const mapPlaces = useMemo(
+    () =>
+      filteredPlaces.filter(
+        (place) =>
+          typeof place.latitude === "number" && typeof place.longitude === "number",
+      ),
+    [filteredPlaces],
+  );
 
   return (
     <main className="dashboard-shell">
-      <section className="hero-panel">
+      <section className="hero-panel compact-hero">
         <div className="hero-copy-block">
           <p className="eyebrow">Tax Object Intelligence</p>
-          <h1>Dashboard pengamatan objek pajak yang bisa diclick, difilter, dan dibaca detailnya.</h1>
+          <h1>Pilih tempat di kiri, baca detailnya di kanan, lalu lihat lokasinya langsung di map.</h1>
           <p className="hero-text">
-            Semua level prioritas ditampilkan. Tim bisa cari objek, klik titik di peta,
-            buka detail tempat, baca analisis singkat AI, lalu pindah fokus per kategori
-            restoran, penginapan, atau hiburan di seluruh Tangerang Selatan.
+            Dashboard ini gue sederhanain jadi pola kerja yang lebih natural:
+            cari tempat, pilih objek, lihat analisis, lalu cek titik lokasinya
+            tanpa kebanyakan filter yang bikin ribet.
           </p>
           <div className="hero-badges">
             <span>Wilayah: Seluruh Tangerang Selatan</span>
             <span>Mode: {snapshot.mode === "live" ? "Live snapshot" : "Seed snapshot"}</span>
-            <span>Objek total: {snapshot.summary.totalPlaces}</span>
+            <span>Data tampil: {filteredSummary.totalPlaces} objek</span>
           </div>
         </div>
 
@@ -392,133 +286,49 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
             <strong>{new Date(snapshot.generatedAt).toLocaleString("id-ID")}</strong>
           </div>
           <div className="hero-meta-card">
-            <span>Objek tampil sekarang</span>
-            <strong>{filteredSummary.totalPlaces}</strong>
+            <span>Potensi pajak aktif</span>
+            <strong>{formatCompactCurrency(filteredSummary.estimatedMonthlyTax)}</strong>
           </div>
-          <div className="hero-meta-card">
-            <span>Lead teratas aktif</span>
-            <strong>{filteredSummary.topPlaceName ?? "-"}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="metric-grid">
-        <button
-          className={`metric-card interactive-card ${selectedPriorities.includes("high") ? "is-active" : ""}`}
-          type="button"
-          onClick={() => togglePriority("high")}
-        >
-          <span className="metric-label">Prioritas tinggi</span>
-          <strong>{filteredSummary.highPriority}</strong>
-          <p>{PRIORITY_META[0].description}</p>
-        </button>
-        <button
-          className={`metric-card interactive-card ${selectedPriorities.includes("medium") ? "is-active" : ""}`}
-          type="button"
-          onClick={() => togglePriority("medium")}
-        >
-          <span className="metric-label">Prioritas sedang</span>
-          <strong>{filteredSummary.mediumPriority}</strong>
-          <p>{PRIORITY_META[1].description}</p>
-        </button>
-        <button
-          className={`metric-card interactive-card ${selectedPriorities.includes("monitor") ? "is-active" : ""}`}
-          type="button"
-          onClick={() => togglePriority("monitor")}
-        >
-          <span className="metric-label">Pantau rutin</span>
-          <strong>{filteredSummary.monitorPriority}</strong>
-          <p>{PRIORITY_META[2].description}</p>
-        </button>
-        <article className="metric-card">
-          <span className="metric-label">Potensi terfilter</span>
-          <strong>{formatCompactCurrency(filteredSummary.estimatedMonthlyTax)}</strong>
-          <p>
-            {formatCompactCurrency(filteredSummary.estimatedMonthlyRevenue)} omzet estimasi
-            untuk hasil yang sedang tampil.
-          </p>
-        </article>
-      </section>
-
-      <section className="control-panel">
-        <div className="control-head">
-          <div>
-            <p className="eyebrow">Filter kerja</p>
-            <h2>Atur kategori, level prioritas, wilayah, dan urutan data</h2>
-          </div>
-          <div className="head-actions">
-            <Link className="ghost-button" href="/api/export">
+          <div className="hero-meta-card action-card">
+            <span>Data mentah</span>
+            <Link className="ghost-button hero-action" href="/api/export">
               Download Excel
             </Link>
-            <button className="ghost-button" type="button" onClick={resetFilters}>
-              Reset filter
-            </button>
           </div>
         </div>
+      </section>
 
-        <div className="control-grid">
-          <label className="field-block">
-            <span>Cari nama atau alamat</span>
+      <section className="panel compact-toolbar">
+        <div className="toolbar-row">
+          <label className="field-block search-wide">
+            <span>Cari tempat</span>
             <input
               className="text-field"
               type="search"
-              placeholder="Contoh: hotel, pamulang, spa, resto..."
+              placeholder="Cari nama, alamat, kategori, atau flag..."
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
           </label>
-
-          <label className="field-block">
-            <span>Wilayah</span>
-            <select
-              className="select-field"
-              value={selectedRegion}
-              onChange={(event) => setSelectedRegion(event.target.value)}
-            >
-              {REGION_OPTIONS.map((region) => (
-                <option key={region.id} value={region.id}>
-                  {region.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field-block">
-            <span>Urutkan</span>
-            <select
-              className="select-field"
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as SortKey)}
-            >
-              <option value="signal">Signal score tertinggi</option>
-              <option value="revenue">Omzet terbesar</option>
-              <option value="reviews">Review terbanyak</option>
-              <option value="rating">Rating tertinggi</option>
-              <option value="name">Nama A-Z</option>
-            </select>
-          </label>
         </div>
 
-        <div className="filter-section">
-          <div className="filter-caption">
-            <strong>Kategori objek</strong>
-            <button
-              className={`filter-chip ${allCategoriesSelected ? "is-active" : ""}`}
-              type="button"
-              onClick={() =>
-                setSelectedCategories(CATEGORY_META.map((entry) => entry.id))
-              }
-            >
-              Semua kategori
-            </button>
-          </div>
+        <div className="simple-filter-group">
+          <strong>Kategori</strong>
           <div className="chip-row">
+            <button
+              className={`filter-chip compact-chip ${categoryFilter === "all" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setCategoryFilter("all")}
+            >
+              <span>Semua</span>
+              <small>{searchablePlaces.length} objek</small>
+            </button>
             {CATEGORY_META.map((category) => (
               <button
                 key={category.id}
-                className={`filter-chip ${selectedCategories.includes(category.id) ? "is-active" : ""}`}
+                className={`filter-chip compact-chip ${categoryFilter === category.id ? "is-active" : ""}`}
                 type="button"
-                onClick={() => toggleCategory(category.id)}
+                onClick={() => setCategoryFilter(category.id)}
               >
                 <span>{category.label}</span>
                 <small>{categoryCounts[category.id] ?? 0} objek</small>
@@ -527,26 +337,23 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
           </div>
         </div>
 
-        <div className="filter-section">
-          <div className="filter-caption">
-            <strong>Level prioritas</strong>
-            <button
-              className={`filter-chip ${allPrioritiesSelected ? "is-active" : ""}`}
-              type="button"
-              onClick={() =>
-                setSelectedPriorities(PRIORITY_META.map((entry) => entry.id))
-              }
-            >
-              Semua level
-            </button>
-          </div>
+        <div className="simple-filter-group">
+          <strong>Prioritas</strong>
           <div className="chip-row">
+            <button
+              className={`filter-chip compact-chip ${priorityFilter === "all" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setPriorityFilter("all")}
+            >
+              <span>Semua level</span>
+              <small>{searchablePlaces.length} objek</small>
+            </button>
             {PRIORITY_META.map((priority) => (
               <button
                 key={priority.id}
-                className={`filter-chip ${selectedPriorities.includes(priority.id) ? "is-active" : ""}`}
+                className={`filter-chip compact-chip ${priorityFilter === priority.id ? "is-active" : ""}`}
                 type="button"
-                onClick={() => togglePriority(priority.id)}
+                onClick={() => setPriorityFilter(priority.id)}
               >
                 <span>{priority.label}</span>
                 <small>{priorityCounts[priority.id] ?? 0} objek</small>
@@ -556,34 +363,68 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
         </div>
       </section>
 
-      <section className="workspace-grid">
-        <article className="panel map-panel">
+      <section className="workspace-grid master-detail-grid">
+        <article className="panel master-panel">
           <div className="panel-head">
             <div>
-              <p className="eyebrow">Peta Tangsel</p>
-              <h2>Semua hasil filter langsung kelihatan titiknya</h2>
+              <p className="eyebrow">Pilih objek</p>
+              <h2>Daftar tempat</h2>
             </div>
-            <div className="map-legend">
-              {PRIORITY_META.map((priority) => (
-                <span key={priority.id} className={`legend-pill legend-${priority.id}`}>
-                  {priority.label}
-                </span>
-              ))}
+            <span className="result-counter">{filteredPlaces.length} objek</span>
+          </div>
+
+          <div className="quick-summary-strip">
+            <div className="summary-pill">
+              <span>Tinggi</span>
+              <strong>{filteredSummary.highPriority}</strong>
+            </div>
+            <div className="summary-pill">
+              <span>Sedang</span>
+              <strong>{filteredSummary.mediumPriority}</strong>
+            </div>
+            <div className="summary-pill">
+              <span>Pantau</span>
+              <strong>{filteredSummary.monitorPriority}</strong>
             </div>
           </div>
 
-          <PlaceMap
-            places={filteredPlaces}
-            selectedPlaceId={selectedPlaceId}
-            onSelectPlace={setSelectedPlaceId}
-          />
+          <div className="results-scroll">
+            {filteredPlaces.map((place, index) => (
+              <button
+                key={place.placeId}
+                className={`place-row ${selectedPlaceId === place.placeId ? "is-selected" : ""}`}
+                type="button"
+                onClick={() => setSelectedPlaceId(place.placeId)}
+              >
+                <div className="place-rank">{index + 1}</div>
+                <div className="place-main">
+                  <strong>{place.name}</strong>
+                  <span>
+                    {categoryLabel(place.category)} • {regionLabel(place.regionId)}
+                  </span>
+                  <small>{place.address}</small>
+                </div>
+                <div className="place-metrics">
+                  <span>{place.rating?.toFixed(1) ?? "-"} rating</span>
+                  <span>{place.userRatingCount} review</span>
+                  <span>{formatCompactCurrency(place.estimatedMonthlyRevenue)}</span>
+                </div>
+                <span className={`priority-pill priority-${place.priority}`}>
+                  {priorityLabel(place.priority)}
+                </span>
+              </button>
+            ))}
 
-          <p className="panel-note">
-            Klik titik di peta atau pilih nama tempat dari daftar untuk pindah fokus.
-          </p>
+            {!filteredPlaces.length ? (
+              <div className="empty-block compact-empty">
+                <strong>Tidak ada tempat yang cocok.</strong>
+                <span>Coba ganti keyword pencarian atau balik ke semua kategori.</span>
+              </div>
+            ) : null}
+          </div>
         </article>
 
-        <article className="panel inspector-panel">
+        <article className="panel inspector-panel detail-panel">
           <div className="panel-head">
             <div>
               <p className="eyebrow">Detail objek</p>
@@ -602,7 +443,9 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
                 <span className="detail-pill">{categoryLabel(selectedPlace.category)}</span>
                 <span className="detail-pill">{regionLabel(selectedPlace.regionId)}</span>
                 <span className="detail-pill">{openNowLabel(selectedPlace.openNow)}</span>
-                <span className="detail-pill">{businessStatusLabel(selectedPlace.businessStatus)}</span>
+                <span className="detail-pill">
+                  {businessStatusLabel(selectedPlace.businessStatus)}
+                </span>
               </div>
 
               <div className="stat-triplet">
@@ -621,6 +464,29 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
                   <strong>{selectedPlace.rating?.toFixed(1) ?? "-"}</strong>
                   <small>{selectedPlace.userRatingCount} ulasan</small>
                 </div>
+              </div>
+
+              <div className="analysis-card">
+                <span>Analisis objek</span>
+                <p>{buildObjectNarrative(selectedPlace)}</p>
+              </div>
+
+              <div className="location-panel">
+                <div className="location-head">
+                  <div>
+                    <span className="eyebrow">Map lokasi</span>
+                    <h3>Lokasi tempat terpilih</h3>
+                  </div>
+                  <p className="map-caption">
+                    Pin terpilih otomatis difokuskan. Map bisa digeser dan dizoom untuk lihat area sekitar.
+                  </p>
+                </div>
+
+                <PlaceMap
+                  places={mapPlaces}
+                  selectedPlaceId={selectedPlace.placeId}
+                  onSelectPlace={setSelectedPlaceId}
+                />
               </div>
 
               <div className="detail-links">
@@ -651,18 +517,13 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
                 ) : null}
               </div>
 
-              <div className="analysis-card">
-                <span>Analisis objek</span>
-                <p>{buildObjectNarrative(selectedPlace)}</p>
-              </div>
-
               <div className="detail-grid">
                 <div className="detail-card">
                   <span>Alamat</span>
                   <strong>{selectedPlace.address}</strong>
                 </div>
                 <div className="detail-card">
-                  <span>Asumsi transaksi rata-rata</span>
+                  <span>Rata-rata transaksi</span>
                   <strong>{formatCurrency(selectedPlace.averageTicket)}</strong>
                 </div>
                 <div className="detail-card">
@@ -700,7 +561,7 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
                   <small>{selectedPlace.assumptions.weekendMultiplier.toFixed(2)}x</small>
                 </div>
                 <div className="mini-chart-card">
-                  <span>Review velocity factor</span>
+                  <span>Review velocity</span>
                   <div className="mini-bar">
                     <div
                       style={{
@@ -716,7 +577,7 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
                 <span>Jam operasional publik</span>
                 {selectedPlace.openingHoursText?.length ? (
                   <ul>
-                    {(selectedPlace.openingHoursText ?? []).map((line) => (
+                    {selectedPlace.openingHoursText.map((line) => (
                       <li key={line}>{line}</li>
                     ))}
                   </ul>
@@ -735,77 +596,32 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
             </>
           ) : (
             <div className="empty-block">
-              <strong>Belum ada hasil untuk filter ini.</strong>
-              <span>Coba longgarkan filter atau reset pencarian.</span>
+              <strong>Belum ada objek untuk ditampilkan.</strong>
+              <span>Coba ubah keyword pencarian atau pilih kategori lain.</span>
             </div>
           )}
         </article>
       </section>
 
-      <section className="results-grid">
-        <article className="panel list-panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Daftar objek</p>
-              <h2>Semua level prioritas tetap tampil dan bisa dipilih satu-satu</h2>
-            </div>
-            <span className="result-counter">{filteredPlaces.length} objek</span>
+      <section className="panel snapshot-panel">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">Grafik ringkas</p>
+            <h2>Ringkasan cepat dari hasil yang sedang tampil</h2>
           </div>
+        </div>
 
-          <div className="results-scroll">
-            {filteredPlaces.map((place, index) => (
-              <button
-                key={place.placeId}
-                className={`place-row ${selectedPlaceId === place.placeId ? "is-selected" : ""}`}
-                type="button"
-                onClick={() => setSelectedPlaceId(place.placeId)}
-              >
-                <div className="place-rank">{index + 1}</div>
-                <div className="place-main">
-                  <strong>{place.name}</strong>
-                  <span>
-                    {categoryLabel(place.category)} • {regionLabel(place.regionId)}
-                  </span>
-                  <small>{place.address}</small>
-                </div>
-                <div className="place-metrics">
-                  <span>{place.rating?.toFixed(1) ?? "-"} rating</span>
-                  <span>{place.userRatingCount} review</span>
-                  <span>{formatCompactCurrency(place.estimatedMonthlyRevenue)}</span>
-                </div>
-                <span className={`priority-pill priority-${place.priority}`}>
-                  {priorityLabel(place.priority)}
-                </span>
-              </button>
-            ))}
-
-            {!filteredPlaces.length ? (
-              <div className="empty-block compact-empty">
-                <strong>Tidak ada objek yang cocok.</strong>
-                <span>Filter saat ini terlalu sempit untuk snapshot yang tersedia.</span>
-              </div>
-            ) : null}
-          </div>
-        </article>
-
-        <article className="panel analytics-panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Grafik ringkas</p>
-              <h2>Sebaran data yang sedang tampil</h2>
-            </div>
-          </div>
-
+        <div className="snapshot-charts">
           <div className="chart-block">
             <div className="chart-head">
               <strong>Sebaran kategori</strong>
-              <span>klik filter di atas untuk fokus</span>
+              <span>ringkas dan gampang dibaca</span>
             </div>
             <div className="chart-stack">
               {CATEGORY_META.map((category) => {
                 const count = categoryCounts[category.id] ?? 0;
-                const percentage = categoryChartTotal
-                  ? Math.round((count / categoryChartTotal) * 100)
+                const percentage = searchablePlaces.length
+                  ? Math.round((count / searchablePlaces.length) * 100)
                   : 0;
 
                 return (
@@ -826,13 +642,13 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
           <div className="chart-block">
             <div className="chart-head">
               <strong>Sebaran prioritas</strong>
-              <span>semua level tetap bisa dipantau</span>
+              <span>semua level tetap kelihatan</span>
             </div>
             <div className="chart-stack">
               {PRIORITY_META.map((priority) => {
                 const count = priorityCounts[priority.id] ?? 0;
-                const percentage = priorityChartTotal
-                  ? Math.round((count / priorityChartTotal) * 100)
+                const percentage = searchablePlaces.length
+                  ? Math.round((count / searchablePlaces.length) * 100)
                   : 0;
 
                 return (
@@ -849,39 +665,7 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
               })}
             </div>
           </div>
-
-          <div className="chart-block">
-            <div className="chart-head">
-              <strong>Kepadatan wilayah</strong>
-              <span>bisa dipakai buat cari kecamatan paling ramai</span>
-            </div>
-            <div className="chart-stack">
-              {SEARCH_REGIONS.map((region) => {
-                const count = regionCounts[region.id] ?? 0;
-                const percentage = regionChartTotal
-                  ? Math.round((count / regionChartTotal) * 100)
-                  : 0;
-
-                return (
-                  <button
-                    key={region.id}
-                    className={`chart-row chart-button ${selectedRegion === region.id ? "is-active" : ""}`}
-                    type="button"
-                    onClick={() => setSelectedRegion(region.id)}
-                  >
-                    <div className="chart-label">
-                      <strong>{region.name}</strong>
-                      <span>{count} objek</span>
-                    </div>
-                    <div className="chart-bar neutral-bar">
-                      <div style={{ width: `${percentage}%` }} />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </article>
+        </div>
       </section>
     </main>
   );

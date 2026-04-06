@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef } from "react";
 import type { CircleMarker, LayerGroup, Map as LeafletMap } from "leaflet";
 
 import type { PlaceAnalysis } from "@/lib/types";
@@ -10,9 +10,9 @@ const DEFAULT_ZOOM = 12;
 
 type MarkerEntry = {
   marker: CircleMarker;
-  priority: PlaceAnalysis["priority"];
   latitude: number;
   longitude: number;
+  priority: PlaceAnalysis["priority"];
 };
 
 function markerColor(priority: PlaceAnalysis["priority"]) {
@@ -30,10 +30,10 @@ function markerStyle(priority: PlaceAnalysis["priority"], isSelected: boolean) {
   return {
     color: isSelected ? "#ffffff" : "rgba(255, 255, 255, 0.72)",
     fillColor: markerColor(priority),
-    fillOpacity: isSelected ? 0.95 : 0.78,
+    fillOpacity: isSelected ? 0.95 : 0.8,
     opacity: 1,
     weight: isSelected ? 2.6 : 1.2,
-    radius: isSelected ? 10 : priority === "high" ? 7.4 : priority === "medium" ? 6.2 : 5.2,
+    radius: isSelected ? 9.5 : priority === "high" ? 6.8 : priority === "medium" ? 5.8 : 5,
   };
 }
 
@@ -48,13 +48,10 @@ export function PlaceMap({
   selectedPlaceId,
   onSelectPlace,
 }: PlaceMapProps) {
-  const [isMapReady, setIsMapReady] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const layerRef = useRef<LayerGroup | null>(null);
   const markerRefs = useRef<Map<string, MarkerEntry>>(new Map());
-  const previousPlacesKeyRef = useRef<string>("");
-  const hasInitialFitRef = useRef(false);
   const handleSelectPlace = useEffectEvent((placeId: string) => {
     onSelectPlace(placeId);
   });
@@ -86,6 +83,13 @@ export function PlaceMap({
       const map = L.map(containerRef.current, {
         zoomControl: false,
         attributionControl: true,
+        dragging: true,
+        scrollWheelZoom: true,
+        touchZoom: true,
+        doubleClickZoom: true,
+        boxZoom: false,
+        keyboard: false,
+        zoomSnap: 0.25,
       }).setView([DEFAULT_CENTER.latitude, DEFAULT_CENTER.longitude], DEFAULT_ZOOM);
 
       L.control
@@ -96,14 +100,17 @@ export function PlaceMap({
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
-        maxZoom: 18,
+        maxZoom: 19,
       }).addTo(map);
 
       const layer = L.layerGroup().addTo(map);
 
       mapRef.current = map;
       layerRef.current = layer;
-      setIsMapReady(true);
+
+      requestAnimationFrame(() => {
+        map.invalidateSize();
+      });
     }
 
     void setupMap();
@@ -112,9 +119,6 @@ export function PlaceMap({
       isMounted = false;
       markerRefs.current.clear();
       layerRef.current = null;
-      previousPlacesKeyRef.current = "";
-      hasInitialFitRef.current = false;
-      setIsMapReady(false);
 
       if (mapRef.current) {
         mapRef.current.remove();
@@ -126,15 +130,8 @@ export function PlaceMap({
   useEffect(() => {
     let isMounted = true;
 
-    async function syncMarkers() {
-      if (!isMapReady || !mapRef.current || !layerRef.current) {
-        return;
-      }
-
-      const placesKey = validPlaces.map((place) => place.placeId).join("|");
-      const markersChanged = previousPlacesKeyRef.current !== placesKey;
-
-      if (!markersChanged) {
+    async function renderMarkers() {
+      if (!mapRef.current || !layerRef.current) {
         return;
       }
 
@@ -152,94 +149,91 @@ export function PlaceMap({
           continue;
         }
 
-        const marker = L.circleMarker([place.latitude, place.longitude], markerStyle(place.priority, place.placeId === selectedPlaceId));
+        const isSelected = place.placeId === selectedPlaceId;
+        const marker = L.circleMarker(
+          [place.latitude, place.longitude],
+          markerStyle(place.priority, isSelected),
+        );
+
         marker.bindTooltip(place.name, {
           direction: "top",
-          offset: [0, -10],
+          offset: [0, -8],
           opacity: 0.95,
+          sticky: true,
         });
+
         marker.on("click", () => {
           handleSelectPlace(place.placeId);
         });
+
         marker.addTo(layerRef.current);
 
         markerRefs.current.set(place.placeId, {
           marker,
-          priority: place.priority,
           latitude: place.latitude,
           longitude: place.longitude,
+          priority: place.priority,
         });
       }
 
-      if (validPlaces.length > 0) {
-        const bounds = L.latLngBounds(
-          validPlaces.map((place) => [place.latitude as number, place.longitude as number]),
-        );
-
-        if (!hasInitialFitRef.current) {
-          mapRef.current.fitBounds(bounds.pad(0.08), {
-            animate: false,
-            maxZoom: 13,
-          });
-          hasInitialFitRef.current = true;
-        } else {
-          mapRef.current.fitBounds(bounds.pad(0.06), {
-            animate: true,
-            duration: 0.5,
-            maxZoom: 13,
-          });
-        }
-      } else {
+      if (!validPlaces.length) {
         mapRef.current.setView([DEFAULT_CENTER.latitude, DEFAULT_CENTER.longitude], DEFAULT_ZOOM);
+        return;
       }
 
-      previousPlacesKeyRef.current = placesKey;
+      const selectedMarker = selectedPlaceId ? markerRefs.current.get(selectedPlaceId) : null;
+
+      if (selectedMarker) {
+        mapRef.current.setView(
+          [selectedMarker.latitude, selectedMarker.longitude],
+          Math.max(mapRef.current.getZoom(), 14),
+        );
+        selectedMarker.marker.openTooltip();
+        return;
+      }
+
+      if (validPlaces.length === 1) {
+        mapRef.current.setView(
+          [validPlaces[0].latitude as number, validPlaces[0].longitude as number],
+          14,
+        );
+        return;
+      }
+
+      const bounds = L.latLngBounds(
+        validPlaces.map((place) => [place.latitude as number, place.longitude as number]),
+      );
+      mapRef.current.fitBounds(bounds.pad(0.1), {
+        animate: false,
+        maxZoom: 13,
+      });
     }
 
-    void syncMarkers();
+    void renderMarkers();
 
     return () => {
       isMounted = false;
     };
-  }, [handleSelectPlace, isMapReady, selectedPlaceId, validPlaces]);
+  }, [handleSelectPlace, selectedPlaceId, validPlaces]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) {
-      return;
-    }
-
     for (const [placeId, entry] of markerRefs.current.entries()) {
-      entry.marker.setStyle(markerStyle(entry.priority, placeId === selectedPlaceId));
+      const isSelected = placeId === selectedPlaceId;
+      entry.marker.setStyle(markerStyle(entry.priority, isSelected));
 
-      if (placeId === selectedPlaceId) {
+      if (isSelected) {
         entry.marker.bringToFront();
       }
     }
-
-    if (!selectedPlaceId) {
-      return;
-    }
-
-    const selected = markerRefs.current.get(selectedPlaceId);
-    if (!selected) {
-      return;
-    }
-
-    map.flyTo([selected.latitude, selected.longitude], Math.max(map.getZoom(), 13), {
-      animate: true,
-      duration: 0.55,
-    });
-    selected.marker.openTooltip();
   }, [selectedPlaceId]);
 
   return (
     <div className="map-shell">
       <div className="map-canvas" ref={containerRef} />
-      {validPlaces.length === 0 ? (
+      {!validPlaces.length ? (
         <div className="map-empty">
-          <strong>Belum ada titik yang bisa dipetakan</strong>
-          <span>Coba ubah filter atau jalankan sync ulang snapshot.</span>
+          <strong>Pin lokasi belum tersedia</strong>
+          <span>Tempat yang dipilih belum punya koordinat publik yang cukup.</span>
         </div>
       ) : null}
     </div>
