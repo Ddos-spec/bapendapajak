@@ -299,6 +299,12 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
       </section>
 
       <section className="panel compact-toolbar">
+        <div className="toolbar-head">
+          <div>
+            <p className="eyebrow">Pencarian cepat</p>
+            <h2>Cari nama tempat atau alamat tanpa ngacak filter lain</h2>
+          </div>
+        </div>
         <div className="toolbar-row">
           <label className="field-block search-wide">
             <span>Cari tempat</span>
@@ -310,56 +316,6 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
               onChange={(event) => setSearchText(event.target.value)}
             />
           </label>
-        </div>
-
-        <div className="simple-filter-group">
-          <strong>Kategori</strong>
-          <div className="chip-row">
-            <button
-              className={`filter-chip compact-chip ${categoryFilter === "all" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => setCategoryFilter("all")}
-            >
-              <span>Semua</span>
-              <small>{searchablePlaces.length} objek</small>
-            </button>
-            {CATEGORY_META.map((category) => (
-              <button
-                key={category.id}
-                className={`filter-chip compact-chip ${categoryFilter === category.id ? "is-active" : ""}`}
-                type="button"
-                onClick={() => setCategoryFilter(category.id)}
-              >
-                <span>{category.label}</span>
-                <small>{categoryCounts[category.id] ?? 0} objek</small>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="simple-filter-group">
-          <strong>Prioritas</strong>
-          <div className="chip-row">
-            <button
-              className={`filter-chip compact-chip ${priorityFilter === "all" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => setPriorityFilter("all")}
-            >
-              <span>Semua level</span>
-              <small>{searchablePlaces.length} objek</small>
-            </button>
-            {PRIORITY_META.map((priority) => (
-              <button
-                key={priority.id}
-                className={`filter-chip compact-chip ${priorityFilter === priority.id ? "is-active" : ""}`}
-                type="button"
-                onClick={() => setPriorityFilter(priority.id)}
-              >
-                <span>{priority.label}</span>
-                <small>{priorityCounts[priority.id] ?? 0} objek</small>
-              </button>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -373,19 +329,44 @@ export function DashboardClient({ snapshot }: DashboardClientProps) {
             <span className="result-counter">{filteredPlaces.length} objek</span>
           </div>
 
-          <div className="quick-summary-strip">
-            <div className="summary-pill">
-              <span>Tinggi</span>
-              <strong>{filteredSummary.highPriority}</strong>
+          <div className="list-toolbar">
+            <div className="priority-switches">
+              <button
+                className={`priority-switch ${priorityFilter === "all" ? "is-active" : ""}`}
+                type="button"
+                onClick={() => setPriorityFilter("all")}
+              >
+                <span>All</span>
+                <small>{searchablePlaces.length}</small>
+              </button>
+              {PRIORITY_META.map((priority) => (
+                <button
+                  key={priority.id}
+                  className={`priority-switch ${priorityFilter === priority.id ? "is-active" : ""}`}
+                  type="button"
+                  onClick={() => setPriorityFilter(priority.id)}
+                >
+                  <span>{priority.label}</span>
+                  <small>{priorityCounts[priority.id] ?? 0}</small>
+                </button>
+              ))}
             </div>
-            <div className="summary-pill">
-              <span>Sedang</span>
-              <strong>{filteredSummary.mediumPriority}</strong>
-            </div>
-            <div className="summary-pill">
-              <span>Pantau</span>
-              <strong>{filteredSummary.monitorPriority}</strong>
-            </div>
+
+            <label className="list-select">
+              <span>Kategori</span>
+              <select
+                className="select-field"
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
+              >
+                <option value="all">Semua kategori</option>
+                {CATEGORY_META.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.label} ({categoryCounts[category.id] ?? 0})
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="results-scroll">
