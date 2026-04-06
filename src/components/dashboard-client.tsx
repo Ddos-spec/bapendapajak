@@ -51,6 +51,26 @@ const REGION_LABELS = new Map(
   SEARCH_REGIONS.map((region) => [region.id, region.name] as const),
 );
 
+const CATEGORY_THEME: Record<TaxCategory, { color: string; soft: string; accent: string }> = {
+  restaurant: {
+    color: "#246bff",
+    soft: "rgba(36, 107, 255, 0.14)",
+    accent: "#1e4dd0",
+  },
+  hotel: {
+    color: "#089167",
+    soft: "rgba(8, 145, 103, 0.14)",
+    accent: "#0b6b4b",
+  },
+  entertainment: {
+    color: "#f59e0b",
+    soft: "rgba(245, 158, 11, 0.16)",
+    accent: "#9a6706",
+  },
+};
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
 const numberFormatter = new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
 });
@@ -69,6 +89,10 @@ function formatCompactCurrency(value: number) {
   }
 
   return formatCurrency(value);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function categoryLabel(category: TaxCategory) {
@@ -141,6 +165,41 @@ function makeCountMap<T extends string>(items: T[]) {
     acc[item] = (acc[item] ?? 0) + 1;
     return acc;
   }, {} as Record<T, number>);
+}
+
+function formatMonthLabel(date: Date) {
+  return `${MONTH_LABELS[date.getUTCMonth()]} ${String(date.getUTCFullYear()).slice(-2)}`;
+}
+
+function buildRecentMonths(generatedAt: string, count = 6) {
+  const source = new Date(generatedAt);
+
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() - (count - 1 - index), 1));
+
+    return {
+      key: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`,
+      label: formatMonthLabel(date),
+      date,
+    };
+  });
+}
+
+function buildOutlierScore(place: PlaceAnalysis) {
+  const ratingStrength = clamp(((place.rating ?? 3) - 3) / 2, 0, 1);
+  const taxStrength = Math.max(place.estimatedMonthlyTax, 1);
+  const priorityBoost =
+    place.priority === "high" ? 1.18 : place.priority === "medium" ? 1.08 : 1;
+
+  return taxStrength * (0.82 + ratingStrength * 0.3) * priorityBoost;
+}
+
+function truncateLabel(value: string, maxLength = 24) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function buildObjectNarrative(place: PlaceAnalysis) {
@@ -429,6 +488,169 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
     }),
     [filteredPlaces],
   );
+
+  const chartCategoryStats = useMemo(() => {
+    const totalTax = filteredPlaces.reduce((sum, place) => sum + place.estimatedMonthlyTax, 0);
+
+    return CATEGORY_META.map((category) => {
+      const categoryPlaces = filteredPlaces.filter((place) => place.category === category.id);
+      const monthlyTax = categoryPlaces.reduce((sum, place) => sum + place.estimatedMonthlyTax, 0);
+      const monthlyRevenue = categoryPlaces.reduce(
+        (sum, place) => sum + place.estimatedMonthlyRevenue,
+        0,
+      );
+
+      return {
+        ...category,
+        count: categoryPlaces.length,
+        monthlyTax,
+        monthlyRevenue,
+        share: totalTax ? (monthlyTax / totalTax) * 100 : 0,
+        ...CATEGORY_THEME[category.id],
+      };
+    });
+  }, [filteredPlaces]);
+
+  const districtHeatmap = useMemo(() => {
+    const districts = SEARCH_REGIONS.map((region) => {
+      const places = filteredPlaces.filter((place) => place.regionId === region.id);
+      const monthlyTax = places.reduce((sum, place) => sum + place.estimatedMonthlyTax, 0);
+      const averageSignal = places.length
+        ? places.reduce((sum, place) => sum + place.signalScore, 0) / places.length
+        : 0;
+
+      return {
+        id: region.id,
+        label: region.name,
+        count: places.length,
+        monthlyTax,
+        averageSignal,
+      };
+    });
+
+    const maxTax = Math.max(...districts.map((district) => district.monthlyTax), 1);
+
+    return districts
+      .map((district) => ({
+        ...district,
+        intensity: district.monthlyTax / maxTax,
+      }))
+      .sort((left, right) => right.monthlyTax - left.monthlyTax || right.count - left.count);
+  }, [filteredPlaces]);
+
+  const donutSegments = useMemo(() => {
+    const radius = 54;
+    const circumference = 2 * Math.PI * radius;
+    let offset = 0;
+
+    return chartCategoryStats.map((category) => {
+      const segmentLength = circumference * (category.share / 100);
+      const segment = {
+        ...category,
+        radius,
+        circumference,
+        dashArray: `${segmentLength} ${Math.max(circumference - segmentLength, 0)}`,
+        dashOffset: -offset,
+      };
+
+      offset += segmentLength;
+
+      return segment;
+    });
+  }, [chartCategoryStats]);
+
+  const scatterPlot = useMemo(() => {
+    const width = 360;
+    const height = 232;
+    const padding = { top: 16, right: 16, bottom: 28, left: 38 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    const maxTax = Math.max(...filteredPlaces.map((place) => place.estimatedMonthlyTax), 1);
+    const topOutliers = new Set(
+      [...filteredPlaces]
+        .sort((left, right) => buildOutlierScore(right) - buildOutlierScore(left))
+        .slice(0, 5)
+        .map((place) => place.placeId),
+    );
+
+    return {
+      width,
+      height,
+      padding,
+      maxTax,
+      axisTicks: [3, 3.5, 4, 4.5, 5],
+      points: filteredPlaces.map((place) => {
+        const rating = clamp(place.rating ?? 3, 3, 5);
+        const x = padding.left + ((rating - 3) / 2) * plotWidth;
+        const y =
+          padding.top +
+          (1 - clamp(place.estimatedMonthlyTax / maxTax, 0, 1)) * plotHeight;
+
+        return {
+          id: place.placeId,
+          name: place.name,
+          x,
+          y,
+          rating,
+          monthlyTax: place.estimatedMonthlyTax,
+          priority: place.priority,
+          category: place.category,
+          radius: place.priority === "high" ? 6.5 : place.priority === "medium" ? 5.4 : 4.5,
+          isOutlier: topOutliers.has(place.placeId),
+        };
+      }),
+      outliers: [...filteredPlaces]
+        .sort((left, right) => buildOutlierScore(right) - buildOutlierScore(left))
+        .slice(0, 5),
+    };
+  }, [filteredPlaces]);
+
+  const monthlyGrowthEstimate = useMemo(() => {
+    const months = buildRecentMonths(activeSnapshot.generatedAt, 6);
+    const series = months.map((month) => ({
+      ...month,
+      counts: {
+        restaurant: 0,
+        hotel: 0,
+        entertainment: 0,
+      } satisfies Record<TaxCategory, number>,
+    }));
+
+    filteredPlaces.forEach((place) => {
+      const maturity = clamp(place.userRatingCount / 240, 0, 1);
+      const ratingStrength = clamp(((place.rating ?? 3) - 3) / 2, 0, 1);
+      const stabilityBias = clamp((1.55 - place.assumptions.reviewVelocityFactor) / 0.7, 0, 1);
+      const ageScore = clamp(maturity * 0.58 + ratingStrength * 0.18 + stabilityBias * 0.24, 0.08, 1);
+      const introIndex = Math.round((1 - ageScore) * (series.length - 1));
+
+      for (let index = introIndex; index < series.length; index += 1) {
+        series[index].counts[place.category] += 1;
+      }
+    });
+
+    const maxCount = Math.max(
+      ...series.flatMap((entry) => Object.values(entry.counts)),
+      1,
+    );
+
+    return {
+      note:
+        "Indikasi pertumbuhan disusun dari kematangan ulasan, rating, dan review velocity. Ini bukan histori transaksi riil.",
+      maxCount,
+      series: series.map((entry) => ({
+        ...entry,
+        total:
+          entry.counts.restaurant + entry.counts.hotel + entry.counts.entertainment,
+        ranked: CATEGORY_META.map((category) => ({
+          id: category.id,
+          label: category.label,
+          count: entry.counts[category.id],
+          color: CATEGORY_THEME[category.id].color,
+          accent: CATEGORY_THEME[category.id].accent,
+        })).sort((left, right) => right.count - left.count),
+      })),
+    };
+  }, [activeSnapshot.generatedAt, filteredPlaces]);
 
   const mapPlaces = useMemo(
     () =>
@@ -855,64 +1077,315 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
       <section className="panel snapshot-panel">
         <div className="panel-head">
           <div>
-            <p className="eyebrow">Grafik ringkas</p>
-            <h2>Ringkasan cepat dari hasil yang sedang tampil</h2>
+            <p className="eyebrow">Layer 2 Visualisasi</p>
+            <h2>Peta sinyal, komposisi potensi, dan target outlier dalam satu section</h2>
           </div>
         </div>
 
-        <div className="snapshot-charts">
-          <div className="chart-block">
+        <div className="visual-grid">
+          <div className="visual-card visual-card-wide">
             <div className="chart-head">
-              <strong>Sebaran kategori</strong>
-              <span>ringkas dan gampang dibaca</span>
+              <div>
+                <strong>Heatmap kecamatan</strong>
+                <span>Zona pajak paling tebal dari hasil yang sedang tampil</span>
+              </div>
+              {regionFilter !== "all" ? (
+                <button
+                  type="button"
+                  className="ghost-button chart-action"
+                  onClick={() => setRegionFilter("all")}
+                >
+                  Reset kecamatan
+                </button>
+              ) : null}
             </div>
-            <div className="chart-stack">
-              {CATEGORY_META.map((category) => {
-                const count = categoryCounts[category.id] ?? 0;
-                const percentage = searchablePlaces.length
-                  ? Math.round((count / searchablePlaces.length) * 100)
-                  : 0;
+
+            <div className="district-heatmap-grid">
+              {districtHeatmap.map((district) => {
+                const tint =
+                  district.intensity > 0.72
+                    ? `rgba(239, 68, 68, ${0.16 + district.intensity * 0.22})`
+                    : district.intensity > 0.42
+                      ? `rgba(245, 158, 11, ${0.14 + district.intensity * 0.2})`
+                      : `rgba(36, 107, 255, ${0.08 + district.intensity * 0.22})`;
 
                 return (
-                  <div key={category.id} className="chart-row">
-                    <div className="chart-label">
-                      <strong>{category.label}</strong>
-                      <span>{count} objek</span>
+                  <button
+                    key={district.id}
+                    type="button"
+                    className={`district-tile ${regionFilter === district.id ? "is-active" : ""}`}
+                    style={{
+                      background: `linear-gradient(180deg, ${tint}, rgba(255, 255, 255, 0.98))`,
+                    }}
+                    onClick={() =>
+                      setRegionFilter((current) => (current === district.id ? "all" : district.id))
+                    }
+                  >
+                    <div className="district-tile-head">
+                      <strong>{district.label}</strong>
+                      <span>{district.count} objek</span>
                     </div>
-                    <div className="chart-bar">
-                      <div style={{ width: `${percentage}%` }} />
+                    <div className="district-tile-figure">
+                      <strong>{formatCompactCurrency(district.monthlyTax)}</strong>
+                      <span>potensi pajak</span>
                     </div>
-                  </div>
+                    <div className="district-meter">
+                      <div style={{ width: `${Math.max(8, district.intensity * 100)}%` }} />
+                    </div>
+                    <small>Rata-rata signal score {district.averageSignal.toFixed(0) || 0}</small>
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="chart-block">
+          <div className="visual-card donut-card">
             <div className="chart-head">
-              <strong>Sebaran prioritas</strong>
-              <span>semua level tetap kelihatan</span>
+              <div>
+                <strong>Donut komposisi potensi</strong>
+                <span>Hotel vs Resto vs Hiburan berdasarkan pajak estimasi</span>
+              </div>
             </div>
-            <div className="chart-stack">
-              {PRIORITY_META.map((priority) => {
-                const count = priorityCounts[priority.id] ?? 0;
-                const percentage = searchablePlaces.length
-                  ? Math.round((count / searchablePlaces.length) * 100)
-                  : 0;
 
-                return (
-                  <div key={priority.id} className="chart-row">
-                    <div className="chart-label">
-                      <strong>{priority.label}</strong>
-                      <span>{count} objek</span>
+            <div className="donut-layout">
+              <div className="donut-shell" aria-hidden="true">
+                <svg viewBox="0 0 160 160" className="donut-chart">
+                  <circle cx="80" cy="80" r="54" className="donut-track" />
+                  {donutSegments.map((segment) =>
+                    segment.share > 0 ? (
+                      <circle
+                        key={segment.id}
+                        cx="80"
+                        cy="80"
+                        r={segment.radius}
+                        className="donut-segment"
+                        stroke={segment.color}
+                        strokeDasharray={segment.dashArray}
+                        strokeDashoffset={segment.dashOffset}
+                      />
+                    ) : null,
+                  )}
+                </svg>
+                <div className="donut-center">
+                  <strong>{formatCompactCurrency(filteredSummary.estimatedMonthlyTax)}</strong>
+                  <span>potensi pajak aktif</span>
+                </div>
+              </div>
+
+              <div className="donut-legend">
+                {chartCategoryStats.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    className={`donut-legend-item ${categoryFilter === category.id ? "is-active" : ""}`}
+                    onClick={() =>
+                      setCategoryFilter((current) => (current === category.id ? "all" : category.id))
+                    }
+                  >
+                    <span
+                      className="legend-dot"
+                      style={{ background: category.color }}
+                    />
+                    <div>
+                      <strong>{category.label}</strong>
+                      <small>
+                        {category.count} objek • {formatCompactCurrency(category.monthlyTax)}
+                      </small>
                     </div>
-                    <div className={`chart-bar priority-bar-${priority.id}`}>
-                      <div style={{ width: `${percentage}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
+                    <b>{Math.round(category.share)}%</b>
+                  </button>
+                ))}
+              </div>
             </div>
+          </div>
+
+          <div className="visual-card visual-card-wide">
+            <div className="chart-head">
+              <div>
+                <strong>Scatter plot rating vs potensi pajak</strong>
+                <span>Outlier paling kanan-atas biasanya paling layak naik prioritas</span>
+              </div>
+            </div>
+
+            <div className="scatter-layout">
+              <div className="scatter-shell">
+                <svg
+                  viewBox={`0 0 ${scatterPlot.width} ${scatterPlot.height}`}
+                  className="scatter-chart"
+                  role="img"
+                  aria-label="Scatter plot rating versus potensi pajak"
+                >
+                  <line
+                    x1={scatterPlot.padding.left}
+                    y1={scatterPlot.height - scatterPlot.padding.bottom}
+                    x2={scatterPlot.width - scatterPlot.padding.right}
+                    y2={scatterPlot.height - scatterPlot.padding.bottom}
+                    className="scatter-axis"
+                  />
+                  <line
+                    x1={scatterPlot.padding.left}
+                    y1={scatterPlot.padding.top}
+                    x2={scatterPlot.padding.left}
+                    y2={scatterPlot.height - scatterPlot.padding.bottom}
+                    className="scatter-axis"
+                  />
+
+                  {scatterPlot.axisTicks.map((tick) => {
+                    const x =
+                      scatterPlot.padding.left +
+                      ((tick - 3) / 2) *
+                        (scatterPlot.width - scatterPlot.padding.left - scatterPlot.padding.right);
+
+                    return (
+                      <g key={tick}>
+                        <line
+                          x1={x}
+                          y1={scatterPlot.padding.top}
+                          x2={x}
+                          y2={scatterPlot.height - scatterPlot.padding.bottom}
+                          className="scatter-grid-line"
+                        />
+                        <text
+                          x={x}
+                          y={scatterPlot.height - 8}
+                          textAnchor="middle"
+                          className="scatter-tick"
+                        >
+                          {tick.toFixed(1)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {[0.25, 0.5, 0.75, 1].map((step) => {
+                    const y =
+                      scatterPlot.padding.top +
+                      (1 - step) *
+                        (scatterPlot.height - scatterPlot.padding.top - scatterPlot.padding.bottom);
+                    const tickValue = formatCompactCurrency(scatterPlot.maxTax * step);
+
+                    return (
+                      <g key={step}>
+                        <line
+                          x1={scatterPlot.padding.left}
+                          y1={y}
+                          x2={scatterPlot.width - scatterPlot.padding.right}
+                          y2={y}
+                          className="scatter-grid-line"
+                        />
+                        <text
+                          x={10}
+                          y={y + 4}
+                          textAnchor="start"
+                          className="scatter-tick"
+                        >
+                          {tickValue}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {scatterPlot.points.map((point) => (
+                    <g key={point.id}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={point.radius}
+                        fill={CATEGORY_THEME[point.category].color}
+                        opacity={point.id === selectedPlaceId ? 1 : 0.82}
+                        stroke={
+                          point.id === selectedPlaceId
+                            ? "#0f172a"
+                            : point.priority === "high"
+                              ? "#ffffff"
+                              : "transparent"
+                        }
+                        strokeWidth={point.id === selectedPlaceId ? 2.8 : point.priority === "high" ? 1.8 : 0}
+                        className="scatter-point"
+                        onClick={() => setSelectedPlaceId(point.id)}
+                      >
+                        <title>
+                          {`${point.name} | rating ${point.rating.toFixed(1)} | ${formatCompactCurrency(point.monthlyTax)} potensi pajak`}
+                        </title>
+                      </circle>
+                      {point.isOutlier ? (
+                        <text
+                          x={point.x + 8}
+                          y={point.y - 8}
+                          className="scatter-label"
+                        >
+                          {truncateLabel(point.name, 18)}
+                        </text>
+                      ) : null}
+                    </g>
+                  ))}
+                </svg>
+              </div>
+
+              <div className="outlier-stack">
+                <div className="outlier-head">
+                  <strong>Outlier prioritas</strong>
+                  <span>Klik untuk buka detail objek</span>
+                </div>
+                {scatterPlot.outliers.map((place) => (
+                  <button
+                    key={place.placeId}
+                    type="button"
+                    className={`outlier-item ${selectedPlaceId === place.placeId ? "is-active" : ""}`}
+                    onClick={() => setSelectedPlaceId(place.placeId)}
+                  >
+                    <div>
+                      <strong>{place.name}</strong>
+                      <small>
+                        {place.rating?.toFixed(1) ?? "-"} rating • {formatCompactCurrency(place.estimatedMonthlyTax)}
+                      </small>
+                    </div>
+                    <span className={`priority-pill priority-${place.priority}`}>
+                      {priorityLabel(place.priority)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="visual-card">
+            <div className="chart-head">
+              <div>
+                <strong>Bar race pertumbuhan objek per bulan</strong>
+                <span>Indikasi laju akumulasi objek dari sinyal publik yang ada</span>
+              </div>
+            </div>
+
+            <div className="race-stack">
+              {monthlyGrowthEstimate.series.map((month) => (
+                <div key={month.key} className="race-row">
+                  <div className="race-label">
+                    <strong>{month.label}</strong>
+                    <span>{month.total} objek estimasi</span>
+                  </div>
+                  <div className="race-bars">
+                    {month.ranked.map((category) => (
+                      <div key={category.id} className="race-bar-row">
+                        <span>{category.label}</span>
+                        <div className="race-bar-track">
+                          <div
+                            className="race-bar-fill"
+                            style={{
+                              width: `${(category.count / monthlyGrowthEstimate.maxCount) * 100}%`,
+                              background: `linear-gradient(90deg, ${category.color}, ${category.accent})`,
+                            }}
+                          />
+                        </div>
+                        <b>{category.count}</b>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="visual-note">{monthlyGrowthEstimate.note}</p>
           </div>
         </div>
       </section>
