@@ -1,7 +1,9 @@
 import type { NextRequest } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { env } from "@/lib/env";
-import { runDailySync } from "@/lib/pipeline";
+import { DAILY_SNAPSHOT_TAG } from "@/lib/live-snapshot";
+import { runDailySync, usesRuntimeCacheOnly } from "@/lib/pipeline";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,6 +28,11 @@ async function handleSync(request: NextRequest) {
   }
 
   const snapshot = await runDailySync();
+  if (!usesRuntimeCacheOnly()) {
+    revalidateTag(DAILY_SNAPSHOT_TAG, "max");
+  }
+  revalidatePath("/");
+  revalidatePath("/api/dashboard");
   return Response.json(snapshot);
 }
 

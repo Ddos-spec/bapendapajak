@@ -1,6 +1,8 @@
 import { readLatestSnapshot } from "@/lib/storage";
 import type { PlaceAnalysis } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -32,6 +34,40 @@ function priorityLabel(priority: PlaceAnalysis["priority"]) {
   }
 }
 
+function categoryLabel(category: string) {
+  switch (category) {
+    case "restaurant":
+      return "Restoran";
+    case "hotel":
+      return "Penginapan";
+    case "entertainment":
+      return "Hiburan";
+    default:
+      return category;
+  }
+}
+
+function regionLabel(regionId: string) {
+  switch (regionId) {
+    case "ciputat":
+      return "Ciputat";
+    case "ciputat-timur":
+      return "Ciputat Timur";
+    case "pamulang":
+      return "Pamulang";
+    case "pondok-aren":
+      return "Pondok Aren";
+    case "serpong":
+      return "Serpong";
+    case "serpong-utara":
+      return "Serpong Utara";
+    case "setu":
+      return "Setu";
+    default:
+      return regionId;
+  }
+}
+
 export default async function HomePage() {
   const snapshot = await readLatestSnapshot();
   const spotlight = snapshot.places[0];
@@ -49,13 +85,13 @@ export default async function HomePage() {
           <p className="eyebrow">Tax Object Intelligence</p>
           <h1>Monitoring objek pajak yang beneran siap dipakai kerja</h1>
           <p className="hero-copy">
-            Fokus harian buat Pamulang dan Serpong. Mesin ini disiapkan untuk
+            Fokus harian buat seluruh Tangerang Selatan. Mesin ini disiapkan untuk
             narik kandidat usaha dari Google Places, ngasih scoring prioritas,
             lalu nerjemahin sinyal publik jadi estimasi omzet dan potensi pajak.
           </p>
           <div className="hero-tags">
-            <span>Wilayah: Pamulang + Serpong</span>
-            <span>Kategori: Hotel, Restoran, Hiburan</span>
+            <span>Wilayah: Seluruh Tangerang Selatan</span>
+            <span>Kategori: Restoran + Hiburan + Penginapan</span>
             <span>Mode: {snapshot.mode === "live" ? "Live snapshot" : "Seed snapshot"}</span>
           </div>
         </div>
@@ -142,7 +178,7 @@ export default async function HomePage() {
                 </div>
                 <div>
                   <span>Kategori</span>
-                  <strong>{spotlight.category}</strong>
+                  <strong>{categoryLabel(spotlight.category)}</strong>
                 </div>
                 <div>
                   <span>Harga rata-rata</span>
@@ -199,7 +235,7 @@ export default async function HomePage() {
           <div className="workflow-list">
             <div>
               <strong>1. Tarik kandidat dari Places</strong>
-              <p>Search harian untuk hotel, restoran, karaoke, spa, dan massage di wilayah target.</p>
+              <p>Search harian untuk restoran, cafe, hotel, penginapan, karaoke, spa, reflexology, massage, dan billiard di seluruh Tangsel.</p>
             </div>
             <div>
               <strong>2. Bersihkan dan dedupe</strong>
@@ -244,10 +280,10 @@ export default async function HomePage() {
                     <td>
                       <div className="cell-title">
                         <strong>{place.name}</strong>
-                        <span>{place.category}</span>
+                        <span>{categoryLabel(place.category)}</span>
                       </div>
                     </td>
-                    <td>{place.regionId}</td>
+                    <td>{regionLabel(place.regionId)}</td>
                     <td>{place.rating?.toFixed(1) ?? "-"}</td>
                     <td>{place.userRatingCount}</td>
                     <td>{formatCompactCurrency(place.estimatedMonthlyRevenue)}</td>
@@ -277,7 +313,7 @@ export default async function HomePage() {
             <p>Weekday turun dari band review count, weekend naik 45%.</p>
           </div>
           <div className="assumption-card">
-            <span>Hotel</span>
+            <span>Penginapan</span>
             <strong>Ticket avg Rp 450.000</strong>
             <p>Visitor diinterpretasikan sebagai okupansi transaksi harian dengan multiplier 1,3.</p>
           </div>
@@ -285,6 +321,11 @@ export default async function HomePage() {
             <span>Hiburan</span>
             <strong>Ticket avg Rp 165.000</strong>
             <p>Tarif pajak default 15%, weekend multiplier lebih agresif.</p>
+          </div>
+          <div className="assumption-card">
+            <span>Cakupan wilayah</span>
+            <strong>7 titik search Tangsel</strong>
+            <p>Ciputat, Ciputat Timur, Pamulang, Pondok Aren, Serpong, Serpong Utara, dan Setu.</p>
           </div>
 
           <div className="note-card">

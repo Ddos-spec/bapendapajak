@@ -2,6 +2,31 @@ import { GOOGLE_TEXT_SEARCH_FIELD_MASK, MINIMUM_RATING } from "@/lib/config";
 import type { PlaceLead, PlacesSearchCandidate, RegionConfig, TaxCategory } from "@/lib/types";
 
 const GOOGLE_PLACES_ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
+const SOUTH_TANGERANG_SIGNALS = [
+  "kota tangerang selatan",
+  "tangerang selatan",
+  "south tangerang",
+  "tanggerang selatan",
+  "kec. ciputat",
+  "kec. ciputat timur",
+  "kec. pamulang",
+  "kec. pd. aren",
+  "kec. pondok aren",
+  "kec. serpong",
+  "kec. serpong utara",
+  "kec. setu",
+];
+const OUTSIDE_TANGSEL_SIGNALS = [
+  "kabupaten tangerang",
+  "kota depok",
+  "bojongsari",
+  "cisauk",
+  "kelapa dua",
+  "curug sangereng",
+  "curug",
+  "pagedangan",
+  "pinang",
+];
 
 function normalizeCategory(types: string[], query: string): TaxCategory | null {
   const lowerTypes = types.map((entry) => entry.toLowerCase());
@@ -21,18 +46,22 @@ function normalizeCategory(types: string[], query: string): TaxCategory | null {
   if (
     lowerTypes.some((entry) => ["hotel", "lodging"].includes(entry)) ||
     lowerQuery.includes("hotel") ||
-    lowerQuery.includes("penginapan")
+    lowerQuery.includes("penginapan") ||
+    lowerQuery.includes("guest house") ||
+    lowerQuery.includes("kost harian")
   ) {
     return "hotel";
   }
 
   if (
     lowerTypes.some((entry) =>
-      ["spa", "massage", "karaoke", "night_club"].includes(entry),
+      ["spa", "massage", "karaoke", "night_club", "bar", "billiards", "sports_club"].includes(entry),
     ) ||
     lowerQuery.includes("karaoke") ||
     lowerQuery.includes("massage") ||
-    lowerQuery.includes("spa")
+    lowerQuery.includes("spa") ||
+    lowerQuery.includes("reflexology") ||
+    lowerQuery.includes("billiard")
   ) {
     return "entertainment";
   }
@@ -58,13 +87,27 @@ function normalizeCandidate(
     return null;
   }
 
+  const address =
+    candidate.formattedAddress ?? `${region.name}, ${region.cityLabel}`;
+  const lowerAddress = address.toLowerCase();
+  const isTangselAddress = SOUTH_TANGERANG_SIGNALS.some((signal) =>
+    lowerAddress.includes(signal),
+  );
+  const isOutsideTangsel = OUTSIDE_TANGSEL_SIGNALS.some((signal) =>
+    lowerAddress.includes(signal),
+  );
+
+  if (!isTangselAddress || isOutsideTangsel) {
+    return null;
+  }
+
   return {
     placeId: candidate.id,
     name: candidate.displayName.text,
     category,
     regionId: region.id,
     sourceQuery: query,
-    address: candidate.formattedAddress ?? `${region.name}, ${region.cityLabel}`,
+    address,
     googleMapsUri: candidate.googleMapsUri ?? "",
     types,
     rating,

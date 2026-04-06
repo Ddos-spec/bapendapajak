@@ -7,6 +7,7 @@ const envSchema = z.object({
   DATABASE_SSL: z.enum(["disable", "require"]).optional(),
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  VERCEL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 
 import { ensureDashboardSchema, getDbPool } from "@/lib/db";
 import { env } from "@/lib/env";
+import { getCachedLiveSnapshot } from "@/lib/live-snapshot";
 import type { DailySnapshot } from "@/lib/types";
 
 const LOCAL_DATA_DIR = path.join(process.cwd(), "data");
@@ -13,8 +14,12 @@ const LOCAL_LATEST_PATH = path.join(LOCAL_DATA_DIR, "latest.json");
 const BLOB_LATEST_PATH = "snapshots/latest.json";
 
 async function readLocalSnapshot() {
-  const raw = await readFile(LOCAL_LATEST_PATH, "utf8");
-  return JSON.parse(raw) as DailySnapshot;
+  try {
+    const raw = await readFile(LOCAL_LATEST_PATH, "utf8");
+    return JSON.parse(raw) as DailySnapshot;
+  } catch {
+    return null;
+  }
 }
 
 async function writeLocalSnapshot(snapshot: DailySnapshot) {
@@ -99,7 +104,20 @@ export async function readLatestSnapshot() {
     }
   }
 
-  return readLocalSnapshot();
+  if (!pool && !env.BLOB_READ_WRITE_TOKEN && env.GOOGLE_MAPS_API_KEY && env.VERCEL === "1") {
+    return getCachedLiveSnapshot();
+  }
+
+  const localSnapshot = await readLocalSnapshot();
+  if (localSnapshot) {
+    return localSnapshot;
+  }
+
+  if (env.GOOGLE_MAPS_API_KEY) {
+    return getCachedLiveSnapshot();
+  }
+
+  throw new Error("No snapshot source is available");
 }
 
 export async function writeSnapshot(snapshot: DailySnapshot) {
@@ -113,5 +131,7 @@ export async function writeSnapshot(snapshot: DailySnapshot) {
     await writeBlobSnapshot(snapshot);
   }
 
-  await writeLocalSnapshot(snapshot);
+  if (env.VERCEL !== "1") {
+    await writeLocalSnapshot(snapshot);
+  }
 }

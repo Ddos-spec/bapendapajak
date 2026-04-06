@@ -17,7 +17,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Pajak Bapenda Intelligence",
   description:
-    "Daily tax object intelligence for Pamulang and Serpong using Google Places data and heuristic scoring.",
+    "Daily tax object intelligence for South Tangerang restaurants, entertainment venues, and lodging businesses using Google Places data and heuristic scoring.",
 };
 
 export default function RootLayout({

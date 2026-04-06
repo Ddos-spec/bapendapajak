@@ -3,8 +3,8 @@
 App ini dipakai untuk:
 
 - narik kandidat objek pajak dari Google Places
-- fokus wilayah Pamulang dan Serpong
-- kategori hotel, restoran, dan hiburan
+- fokus wilayah seluruh Tangerang Selatan
+- kategori restoran, hiburan, dan penginapan
 - hitung scoring prioritas, estimasi omzet, dan potensi pajak
 - tampilkan hasilnya di dashboard modern yang enak dipakai tim operasional
 
@@ -75,6 +75,7 @@ Alasan:
 
 - Deploy container ini ke platform lain yang support Docker
 - Gunakan `Dockerfile` yang sudah ada
+- Container menjalankan `next start`, jadi tidak bergantung pada output standalone
 
 ## Status saat ini
 
