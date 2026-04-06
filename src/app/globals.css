@@ -978,52 +978,6 @@ button {
   margin-top: 18px;
 }
 
-.priority-switches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.priority-switch {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: start;
-  justify-content: center;
-  min-width: 84px;
-  min-height: 58px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--ink);
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease;
-}
-
-.priority-switch:hover {
-  transform: translateY(-1px);
-  border-color: rgba(36, 107, 255, 0.22);
-}
-
-.priority-switch.is-active {
-  border-color: rgba(36, 107, 255, 0.34);
-  background: rgba(36, 107, 255, 0.09);
-  color: #1848b8;
-}
-
-.priority-switch span {
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.priority-switch small {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .list-select {
   display: grid;
   gap: 8px;
@@ -1032,9 +986,9 @@ button {
 
 .list-filter-group {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
   gap: 12px;
-  min-width: 470px;
+  min-width: 640px;
 }
 
 .list-select span {

@@ -512,29 +512,23 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
           </div>
 
           <div className="list-toolbar">
-            <div className="priority-switches">
-              <button
-                className={`priority-switch ${priorityFilter === "all" ? "is-active" : ""}`}
-                type="button"
-                onClick={() => setPriorityFilter("all")}
-              >
-                <span>All</span>
-                <small>{searchablePlaces.length}</small>
-              </button>
-              {PRIORITY_META.map((priority) => (
-                <button
-                  key={priority.id}
-                  className={`priority-switch ${priorityFilter === priority.id ? "is-active" : ""}`}
-                  type="button"
-                  onClick={() => setPriorityFilter(priority.id)}
-                >
-                  <span>{priority.label}</span>
-                  <small>{priorityCounts[priority.id] ?? 0}</small>
-                </button>
-              ))}
-            </div>
-
             <div className="list-filter-group">
+              <label className="list-select">
+                <span>Prioritas</span>
+                <select
+                  className="select-field"
+                  value={priorityFilter}
+                  onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
+                >
+                  <option value="all">Semua prioritas ({searchablePlaces.length})</option>
+                  {PRIORITY_META.map((priority) => (
+                    <option key={priority.id} value={priority.id}>
+                      {priority.label} ({priorityCounts[priority.id] ?? 0})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <label className="list-select">
                 <span>Kategori</span>
                 <select
