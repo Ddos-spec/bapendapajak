@@ -444,11 +444,11 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
       <section className="hero-panel compact-hero">
         <div className="hero-copy-block">
           <p className="eyebrow">Tax Object Intelligence</p>
-          <h1>Pilih tempat di kiri, baca detailnya di kanan, lalu lihat lokasinya langsung di map.</h1>
+          <h1>Pantau objek potensial, baca analisisnya, lalu cek lokasinya dalam satu dashboard.</h1>
           <p className="hero-text">
             Dashboard ini gue sederhanain jadi pola kerja yang lebih natural:
-            cari tempat, pilih objek, lihat analisis, lalu cek titik lokasinya
-            tanpa kebanyakan filter yang bikin ribet.
+            cari objek, saring wilayahnya, baca sinyal utamanya, lalu cek titik
+            lokasinya tanpa langkah yang muter-muter.
           </p>
           <div className="hero-badges">
             <span>Wilayah: Seluruh Tangerang Selatan</span>
