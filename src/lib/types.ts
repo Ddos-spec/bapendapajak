@@ -56,6 +56,9 @@ export interface PlaceLead {
   openNow: boolean | null;
   website: string | null;
   phoneNumber: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  openingHoursText: string[];
 }
 
 export interface PlaceAnalysis extends PlaceLead {

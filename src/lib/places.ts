@@ -116,6 +116,9 @@ function normalizeCandidate(
     openNow: candidate.currentOpeningHours?.openNow ?? null,
     website: candidate.websiteUri ?? null,
     phoneNumber: candidate.nationalPhoneNumber ?? null,
+    latitude: candidate.location?.latitude ?? null,
+    longitude: candidate.location?.longitude ?? null,
+    openingHoursText: candidate.currentOpeningHours?.weekdayDescriptions ?? [],
   };
 }
 

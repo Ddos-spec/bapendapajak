@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 
+import "leaflet/dist/leaflet.css";
 import "@/app/globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
