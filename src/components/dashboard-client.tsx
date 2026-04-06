@@ -446,7 +446,7 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
           <p className="eyebrow">Tax Object Intelligence</p>
           <h1>
             DINAS BAPENDA KOTA TANGERANG SELATAN{" "}
-            <span className="hero-signoff">by Memy</span>
+            <span className="hero-signoff">Memy</span>
           </h1>
           <p className="hero-text">
             Dashboard ini dirancang supaya pemantauan objek lebih cepat:
