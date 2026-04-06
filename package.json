@@ -1,0 +1,42 @@
+{
+  "name": "pajak",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Daily tax potential intelligence dashboard for Pamulang and Serpong using Google Places data.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "sync": "tsx scripts/run-sync.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ddos-spec/bapendapajak.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ddos-spec/bapendapajak/issues"
+  },
+  "homepage": "https://github.com/Ddos-spec/bapendapajak#readme",
+  "dependencies": {
+    "@vercel/blob": "^2.3.3",
+    "next": "^16.2.2",
+    "pg": "^8.20.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}

@@ -1,0 +1,10 @@
+.git
+.github
+.next
+node_modules
+*.log
+.env
+.env.local
+app-live-preview.png
+app-live-preview-top.png
+WhatsApp Image *.jpeg

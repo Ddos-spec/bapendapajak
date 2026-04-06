@@ -1,1 +1,15 @@
+node_modules/
+.next/
+.vercel/
+out/
+dist/
+coverage/
+
+.env
+.env.local
+.env.*.local
+
+app-live-preview*.png
+data/history/
+
 WhatsApp Image *.jpeg
