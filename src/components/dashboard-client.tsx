@@ -9,6 +9,7 @@ import type { DailySnapshot, PlaceAnalysis, PriorityLevel, TaxCategory } from "@
 
 type CategoryFilter = "all" | TaxCategory;
 type PriorityFilter = "all" | PriorityLevel;
+type RegionFilter = "all" | string;
 
 const CATEGORY_META: Array<{ id: TaxCategory; label: string; description: string }> = [
   {
@@ -310,6 +311,7 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [regionFilter, setRegionFilter] = useState<RegionFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(
     snapshot.places[0]?.placeId ?? null,
@@ -371,6 +373,11 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
     [searchablePlaces],
   );
 
+  const regionCounts = useMemo(
+    () => makeCountMap(searchablePlaces.map((place) => place.regionId)),
+    [searchablePlaces],
+  );
+
   const priorityCounts = useMemo(
     () => makeCountMap(searchablePlaces.map((place) => place.priority)),
     [searchablePlaces],
@@ -380,9 +387,10 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
     () =>
       [...searchablePlaces]
         .filter((place) => categoryFilter === "all" || place.category === categoryFilter)
+        .filter((place) => regionFilter === "all" || place.regionId === regionFilter)
         .filter((place) => priorityFilter === "all" || place.priority === priorityFilter)
         .sort(comparePlaces),
-    [categoryFilter, priorityFilter, searchablePlaces],
+    [categoryFilter, priorityFilter, regionFilter, searchablePlaces],
   );
 
   useEffect(() => {
@@ -526,21 +534,39 @@ export function DashboardClient({ snapshot, generatedAtLabel }: DashboardClientP
               ))}
             </div>
 
-            <label className="list-select">
-              <span>Kategori</span>
-              <select
-                className="select-field"
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
-              >
-                <option value="all">Semua kategori</option>
-                {CATEGORY_META.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.label} ({categoryCounts[category.id] ?? 0})
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="list-filter-group">
+              <label className="list-select">
+                <span>Kategori</span>
+                <select
+                  className="select-field"
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
+                >
+                  <option value="all">Semua kategori</option>
+                  {CATEGORY_META.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.label} ({categoryCounts[category.id] ?? 0})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="list-select">
+                <span>Kecamatan</span>
+                <select
+                  className="select-field"
+                  value={regionFilter}
+                  onChange={(event) => setRegionFilter(event.target.value)}
+                >
+                  <option value="all">Semua kecamatan</option>
+                  {SEARCH_REGIONS.map((region) => (
+                    <option key={region.id} value={region.id}>
+                      {region.name} ({regionCounts[region.id] ?? 0})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
 
           <div className="results-scroll">
